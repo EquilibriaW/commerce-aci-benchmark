@@ -1,3 +1,5 @@
+export const runtime = 'nodejs'; // CRITICAL: Ensures consistent server instance
+
 import { randomUUID } from 'crypto';
 import { deleteStoredCart } from 'lib/mock/storage';
 import { NextRequest, NextResponse } from 'next/server';

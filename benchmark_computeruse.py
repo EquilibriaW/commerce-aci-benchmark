@@ -256,7 +256,7 @@ class ComputerUseAgent:
         while response is None:
             try:
                 response = self.client.messages.create(
-                    model="claude-sonnet-4-5-20250514",
+                    model="claude-sonnet-4-5-20250929",
                     max_tokens=4096,
                     extra_headers={"anthropic-beta": "computer-use-2025-01-24"},
                     tools=[
@@ -562,7 +562,7 @@ async def main():
     ]
 
     console.rule("[bold]Commerce ACI Benchmark - Claude Computer Use[/bold]")
-    console.print(f"Model: claude-sonnet-4-5-20250514")
+    console.print(f"Model: claude-sonnet-4-5-20250929")
     console.print(f"Beta: computer-use-2025-01-24")
     console.print(f"Display: {DISPLAY_WIDTH}x{DISPLAY_HEIGHT}")
     console.print(f"Max iterations: {MAX_ITERATIONS}")
@@ -652,7 +652,7 @@ async def main():
     output_data = {
         "run_id": run_id,
         "timestamp": datetime.now().isoformat(),
-        "model": "claude-sonnet-4-5-20250514",
+        "model": "claude-sonnet-4-5-20250929",
         "beta": "computer-use-2025-01-24",
         "config": {
             "display_width": DISPLAY_WIDTH,
