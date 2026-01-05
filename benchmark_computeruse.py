@@ -47,10 +47,32 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 DISPLAY_WIDTH = 1280
 DISPLAY_HEIGHT = 800
 
-MAX_ITERATIONS = 15
-RUNS_PER_TASK = 1  # Reduced for testing / rate limits
+MAX_ITERATIONS = 12  # Reduced from 15
+RUNS_PER_TASK = 1
+
+# Debug settings
+DEBUG_SCREENSHOTS = True
+DEBUG_DIR = Path("debug_screenshots")
 
 console = Console()
+
+# System prompt (cached across steps)
+SYSTEM_PROMPT = """You are an AI agent tasked with completing e-commerce tasks on a shopping website.
+
+You can use the computer tool to interact with the webpage:
+- left_click: Click at coordinates
+- type: Type text
+- scroll: Scroll the page
+- key: Press keyboard keys
+
+IMPORTANT GUIDELINES:
+1. Look carefully at the screenshot to find products and UI elements
+2. Click on product images or titles to view product details
+3. Look for "Add to Cart" buttons
+4. For variant selection (like Size), click on the variant options before adding to cart
+5. Navigate using the visible UI elements
+
+When you have completed the task, respond with "TASK_COMPLETE" in your message."""
 
 # --- VERIFIABLE TASK SUITE ---
 # Benchmark products:
@@ -86,12 +108,15 @@ TASKS = [
 class ComputerUseAgent:
     """Agent that uses Claude's computer use capability with screenshots."""
 
-    def __init__(self, page: Page, api_key: str):
+    def __init__(self, page: Page, api_key: str, debug_dir: Optional[Path] = None):
         self.page = page
         self.client = Anthropic(api_key=api_key)
         self.conversation_history = []
         self.entered_agent_view = False
         self.agent_action_requests = 0
+        self.step_count = 0
+        self.debug_dir = debug_dir
+        self.action_log = []
 
         # Track network requests to /agent/actions
         self.page.on("request", self._handle_request)
@@ -100,10 +125,24 @@ class ComputerUseAgent:
         if request.method == "POST" and "/agent/actions/" in request.url:
             self.agent_action_requests += 1
 
-    async def take_screenshot(self) -> str:
-        """Take a screenshot and return as base64."""
+    async def take_screenshot(self) -> tuple[str, bytes]:
+        """Take a screenshot and return as (base64, raw_bytes)."""
         screenshot_bytes = await self.page.screenshot(type="png")
-        return base64.standard_b64encode(screenshot_bytes).decode("utf-8")
+        screenshot_b64 = base64.standard_b64encode(screenshot_bytes).decode("utf-8")
+        return screenshot_b64, screenshot_bytes
+
+    def _save_debug_screenshot(self, screenshot_bytes: bytes, step: int):
+        """Save screenshot to debug directory."""
+        if self.debug_dir:
+            self.debug_dir.mkdir(parents=True, exist_ok=True)
+            screenshot_path = self.debug_dir / f"step_{step:02d}.png"
+            screenshot_path.write_bytes(screenshot_bytes)
+
+    def _log_action(self, step: int, action: str, details: str):
+        """Log an action for debugging."""
+        log_entry = f"Step {step:02d}: {action} - {details}"
+        self.action_log.append(log_entry)
+        console.print(f"    [dim]{log_entry}[/dim]")
 
     async def reset_session(self, base_url: str):
         """Reset the session via API."""
@@ -153,34 +192,33 @@ class ComputerUseAgent:
         Run one step of the agent loop.
         Returns (action_taken, is_done).
         """
+        self.step_count += 1
+
         # Check if we're in agent view
         if "/agent" in self.page.url:
             self.entered_agent_view = True
 
         # Take screenshot
-        screenshot_b64 = await self.take_screenshot()
+        screenshot_b64, screenshot_bytes = await self.take_screenshot()
 
-        # Build messages
+        # Save debug screenshot
+        self._save_debug_screenshot(screenshot_bytes, self.step_count)
+
+        # Build messages with prompt caching
         if not self.conversation_history:
-            # First message - include the task instruction
+            # First message - include cached system prompt + task instruction
             self.conversation_history = [
                 {
                     "role": "user",
                     "content": [
                         {
                             "type": "text",
-                            "text": f"""You are an AI agent tasked with completing an e-commerce task.
-
-TASK: {instruction}
-
-Use the computer tool to interact with the webpage. You can:
-- Click on elements using coordinates
-- Type text
-- Scroll the page
-- Take screenshots
-
-Look at the current screenshot and decide what action to take next.
-When you have completed the task, respond with "TASK_COMPLETE" in your message."""
+                            "text": SYSTEM_PROMPT,
+                            "cache_control": {"type": "ephemeral"}
+                        },
+                        {
+                            "type": "text",
+                            "text": f"\n\nTASK: {instruction}\n\nHere is the current state of the webpage:"
                         },
                         {
                             "type": "image",
@@ -213,17 +251,17 @@ When you have completed the task, respond with "TASK_COMPLETE" in your message."
                 ]
             })
 
-        # Call Claude with computer use (beta API) - with retry for rate limits
-        max_retries = 3
-        for attempt in range(max_retries):
+        # Call Claude with computer use - Sonnet 4.5 with simple rate limit retry
+        response = None
+        while response is None:
             try:
                 response = self.client.messages.create(
-                    model="claude-opus-4-5-20251101",
+                    model="claude-sonnet-4-5-20250514",
                     max_tokens=4096,
-                    extra_headers={"anthropic-beta": "computer-use-2025-11-24"},
+                    extra_headers={"anthropic-beta": "computer-use-2025-01-24"},
                     tools=[
                         {
-                            "type": "computer_20251124",
+                            "type": "computer_20250124",
                             "name": "computer",
                             "display_width_px": DISPLAY_WIDTH,
                             "display_height_px": DISPLAY_HEIGHT,
@@ -232,12 +270,10 @@ When you have completed the task, respond with "TASK_COMPLETE" in your message."
                     ],
                     messages=self.conversation_history
                 )
-                break
             except Exception as e:
-                if "rate_limit" in str(e).lower() and attempt < max_retries - 1:
-                    wait_time = 60 * (attempt + 1)  # 60s, 120s, 180s
-                    print(f"    Rate limited, waiting {wait_time}s...")
-                    await asyncio.sleep(wait_time)
+                if "rate_limit" in str(e).lower():
+                    console.print("    [yellow]Rate limited, waiting 60s...[/yellow]")
+                    await asyncio.sleep(60)
                 else:
                     raise
 
@@ -252,6 +288,7 @@ When you have completed the task, respond with "TASK_COMPLETE" in your message."
                 if "TASK_COMPLETE" in block.text.upper():
                     is_done = True
                     action_taken = "TASK_COMPLETE"
+                    self._log_action(self.step_count, "TASK_COMPLETE", "Agent declared task complete")
 
             elif block.type == "tool_use":
                 assistant_content.append({
@@ -261,9 +298,26 @@ When you have completed the task, respond with "TASK_COMPLETE" in your message."
                     "input": block.input
                 })
 
+                # Log the action
+                action_type = block.input.get('action', 'unknown')
+                coord = block.input.get('coordinate', [0, 0])
+                text = block.input.get('text', '')
+                if action_type in ['left_click', 'right_click', 'double_click']:
+                    self._log_action(self.step_count, action_type, f"at ({coord[0]}, {coord[1]})")
+                elif action_type == 'type':
+                    self._log_action(self.step_count, action_type, f"'{text[:30]}...'")
+                elif action_type == 'scroll':
+                    delta_y = block.input.get('delta_y', 0)
+                    self._log_action(self.step_count, action_type, f"delta_y={delta_y}")
+                elif action_type == 'key':
+                    key = block.input.get('key', '')
+                    self._log_action(self.step_count, action_type, f"'{key}'")
+                else:
+                    self._log_action(self.step_count, action_type, str(block.input)[:50])
+
                 # Execute the computer action
                 tool_result = await self._execute_computer_action(block.input)
-                action_taken = f"{block.input.get('action', 'unknown')}"
+                action_taken = action_type
 
                 # Add assistant message and tool result
                 self.conversation_history.append({
@@ -290,26 +344,31 @@ When you have completed the task, respond with "TASK_COMPLETE" in your message."
 
         return action_taken, is_done
 
-    async def _execute_computer_action(self, action_input: dict) -> str:
-        """Execute a computer use action and return result."""
+    async def _execute_computer_action(self, action_input: dict) -> list:
+        """Execute a computer use action and return result with screenshot.
+
+        Returns a list of content blocks including text result and new screenshot.
+        This is CRITICAL - Claude needs to see the result of its action.
+        """
         action = action_input.get("action")
+        result_text = ""
 
         try:
             if action == "screenshot":
-                return "Screenshot taken successfully."
+                result_text = "Screenshot taken successfully."
 
             elif action == "mouse_move":
                 x = action_input.get("coordinate", [0, 0])[0]
                 y = action_input.get("coordinate", [0, 0])[1]
                 await self.page.mouse.move(x, y)
-                return f"Moved mouse to ({x}, {y})"
+                result_text = f"Moved mouse to ({x}, {y})"
 
             elif action == "left_click":
                 x = action_input.get("coordinate", [0, 0])[0]
                 y = action_input.get("coordinate", [0, 0])[1]
                 await self.page.mouse.click(x, y)
                 await asyncio.sleep(0.5)  # Wait for any navigation/updates
-                return f"Left clicked at ({x}, {y})"
+                result_text = f"Left clicked at ({x}, {y})"
 
             elif action == "left_click_drag":
                 start = action_input.get("start_coordinate", [0, 0])
@@ -318,25 +377,25 @@ When you have completed the task, respond with "TASK_COMPLETE" in your message."
                 await self.page.mouse.down()
                 await self.page.mouse.move(end[0], end[1])
                 await self.page.mouse.up()
-                return f"Dragged from {start} to {end}"
+                result_text = f"Dragged from {start} to {end}"
 
             elif action == "right_click":
                 x = action_input.get("coordinate", [0, 0])[0]
                 y = action_input.get("coordinate", [0, 0])[1]
                 await self.page.mouse.click(x, y, button="right")
-                return f"Right clicked at ({x}, {y})"
+                result_text = f"Right clicked at ({x}, {y})"
 
             elif action == "double_click":
                 x = action_input.get("coordinate", [0, 0])[0]
                 y = action_input.get("coordinate", [0, 0])[1]
                 await self.page.mouse.dblclick(x, y)
-                return f"Double clicked at ({x}, {y})"
+                result_text = f"Double clicked at ({x}, {y})"
 
             elif action == "triple_click":
                 x = action_input.get("coordinate", [0, 0])[0]
                 y = action_input.get("coordinate", [0, 0])[1]
                 await self.page.mouse.click(x, y, click_count=3)
-                return f"Triple clicked at ({x}, {y})"
+                result_text = f"Triple clicked at ({x}, {y})"
 
             elif action == "scroll":
                 x = action_input.get("coordinate", [DISPLAY_WIDTH // 2, DISPLAY_HEIGHT // 2])[0]
@@ -345,12 +404,13 @@ When you have completed the task, respond with "TASK_COMPLETE" in your message."
                 delta_y = action_input.get("delta_y", 0)
                 await self.page.mouse.move(x, y)
                 await self.page.mouse.wheel(delta_x, delta_y)
-                return f"Scrolled at ({x}, {y}) by delta ({delta_x}, {delta_y})"
+                await asyncio.sleep(0.3)  # Wait for scroll to complete
+                result_text = f"Scrolled at ({x}, {y}) by delta ({delta_x}, {delta_y})"
 
             elif action == "type":
                 text = action_input.get("text", "")
                 await self.page.keyboard.type(text)
-                return f"Typed: {text[:50]}..."
+                result_text = f"Typed: {text[:50]}..."
 
             elif action == "key":
                 key = action_input.get("key", "")
@@ -362,29 +422,56 @@ When you have completed the task, respond with "TASK_COMPLETE" in your message."
                 }
                 key = key_map.get(key, key)
                 await self.page.keyboard.press(key)
-                return f"Pressed key: {key}"
+                result_text = f"Pressed key: {key}"
 
             elif action == "hold_key":
                 key = action_input.get("key", "")
                 await self.page.keyboard.down(key)
-                return f"Holding key: {key}"
+                result_text = f"Holding key: {key}"
 
             elif action == "release_key":
                 key = action_input.get("key", "")
                 await self.page.keyboard.up(key)
-                return f"Released key: {key}"
+                result_text = f"Released key: {key}"
+
+            elif action == "wait":
+                duration = action_input.get("duration", 1000)  # milliseconds
+                await asyncio.sleep(duration / 1000)
+                result_text = f"Waited {duration}ms"
 
             else:
-                return f"Unknown action: {action}"
+                result_text = f"Unknown action: {action}"
 
         except Exception as e:
-            return f"Action failed: {str(e)}"
+            result_text = f"Action failed: {str(e)}"
+
+        # CRITICAL: Take new screenshot after action so Claude sees the result
+        screenshot_b64, _ = await self.take_screenshot()
+
+        return [
+            {"type": "text", "text": result_text},
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": screenshot_b64
+                }
+            }
+        ]
 
 
-async def run_trial(task: dict, target_url: str, api_url: str) -> dict:
+async def run_trial(task: dict, target_url: str, api_url: str, condition_name: str, run_num: int) -> dict:
     """Run a single trial of a task."""
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY environment variable is required")
+
+    # Set up debug directory
+    debug_dir = None
+    if DEBUG_SCREENSHOTS:
+        # Sanitize condition name for directory
+        safe_condition = condition_name.replace(" ", "_").replace("(", "").replace(")", "")
+        debug_dir = DEBUG_DIR / safe_condition / task["id"] / f"run_{run_num:02d}"
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -398,7 +485,7 @@ async def run_trial(task: dict, target_url: str, api_url: str) -> dict:
         )
 
         page = await context.new_page()
-        agent = ComputerUseAgent(page, ANTHROPIC_API_KEY)
+        agent = ComputerUseAgent(page, ANTHROPIC_API_KEY, debug_dir=debug_dir)
 
         # Reset session
         await agent.reset_session(api_url)
@@ -431,13 +518,19 @@ async def run_trial(task: dict, target_url: str, api_url: str) -> dict:
             # Small delay between actions
             await asyncio.sleep(0.3)
 
+        # Save action log
+        if debug_dir:
+            log_path = debug_dir / "actions.log"
+            log_path.write_text("\n".join(agent.action_log))
+
         await browser.close()
 
         return {
             "success": success,
             "steps": steps,
             "entered_agent_view": agent.entered_agent_view,
-            "agent_actions": agent.agent_action_requests
+            "agent_actions": agent.agent_action_requests,
+            "action_log": agent.action_log
         }
 
 
@@ -469,11 +562,12 @@ async def main():
     ]
 
     console.rule("[bold]Commerce ACI Benchmark - Claude Computer Use[/bold]")
-    console.print(f"Model: claude-opus-4-5-20251101")
-    console.print(f"Beta: computer-use-2025-11-24")
+    console.print(f"Model: claude-sonnet-4-5-20250514")
+    console.print(f"Beta: computer-use-2025-01-24")
     console.print(f"Display: {DISPLAY_WIDTH}x{DISPLAY_HEIGHT}")
     console.print(f"Max iterations: {MAX_ITERATIONS}")
     console.print(f"Runs per task: {RUNS_PER_TASK}")
+    console.print(f"Debug screenshots: {DEBUG_DIR}")
     console.print()
 
     for cond in CONDITIONS:
@@ -482,7 +576,13 @@ async def main():
         for task in TASKS:
             for run_num in range(RUNS_PER_TASK):
                 try:
-                    res = await run_trial(task, cond["target_url"], cond["api_url"])
+                    res = await run_trial(
+                        task,
+                        cond["target_url"],
+                        cond["api_url"],
+                        cond["name"],
+                        run_num + 1
+                    )
                     results.append({
                         **res,
                         "condition": cond["name"],
@@ -552,8 +652,8 @@ async def main():
     output_data = {
         "run_id": run_id,
         "timestamp": datetime.now().isoformat(),
-        "model": "claude-opus-4-5-20251101",
-        "beta": "computer-use-2025-11-24",
+        "model": "claude-sonnet-4-5-20250514",
+        "beta": "computer-use-2025-01-24",
         "config": {
             "display_width": DISPLAY_WIDTH,
             "display_height": DISPLAY_HEIGHT,
@@ -569,6 +669,7 @@ async def main():
         json.dump(output_data, f, indent=2)
 
     console.print(f"\n[green]Results saved to: {output_file}[/green]")
+    console.print(f"[green]Debug screenshots saved to: {DEBUG_DIR}[/green]")
 
 
 if __name__ == "__main__":
