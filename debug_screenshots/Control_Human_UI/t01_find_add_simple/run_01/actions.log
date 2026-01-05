@@ -4,4 +4,9 @@ Step 03: left_click - at (151, 37)
 Step 04: left_click - at (322, 226)
 Step 05: left_click - at (926, 316)
 Step 06: left_click - at (1028, 433)
-Step 07: TASK_COMPLETE - Agent declared task complete
+Step 07: left_click - at (1085, 749)
+Step 08: scroll - delta_y=0
+Step 09: scroll - delta_y=0
+Step 10: key - ''
+Step 11: left_click - at (496, 777)
+Step 12: key - ''
