@@ -1,5 +1,4 @@
 import { clearAllCarts } from 'lib/shopify';
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
 const BENCHMARK_SECRET = process.env.BENCHMARK_SECRET || 'sk-bench-123';
@@ -15,23 +14,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const cookieStore = await cookies();
-
-    // Clear the cart cookie
-    cookieStore.delete('cartId');
-
     // Clear all stored carts (file-based storage)
     clearAllCarts();
 
-    // Clear any other session-related cookies if they exist
-    const allCookies = cookieStore.getAll();
-    for (const cookie of allCookies) {
-      if (cookie.name.startsWith('cart') || cookie.name.startsWith('session')) {
-        cookieStore.delete(cookie.name);
-      }
-    }
-
-    return NextResponse.json({
+    // Create response and FORCE cookie deletion on the client
+    const response = NextResponse.json({
       status: 'reset_complete',
       message: 'Cart and session state cleared',
       timestamp: new Date().toISOString()
@@ -41,6 +28,11 @@ export async function POST(request: NextRequest) {
         'Cache-Control': 'no-store'
       }
     });
+
+    // Explicitly expire the cartId cookie on the client side
+    response.cookies.set('cartId', '', { maxAge: 0, path: '/' });
+
+    return response;
   } catch (error) {
     console.error('Reset endpoint error:', error);
     return NextResponse.json({

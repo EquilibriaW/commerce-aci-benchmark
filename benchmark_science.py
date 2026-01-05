@@ -76,12 +76,18 @@ class ScientificAgent:
 
     async def reset_session(self, base_url):
         # Use context.request to ensure cookie jar consistency
-        resp = await self.page.context.request.post(
-            f"{base_url}/agent/reset", 
-            headers={"X-Benchmark-Secret": BENCHMARK_SECRET}
-        )
-        if not resp.ok:
-            raise Exception(f"Failed to reset session at {base_url}")
+        try:
+            resp = await self.page.context.request.post(
+                f"{base_url}/agent/reset",
+                headers={"X-Benchmark-Secret": BENCHMARK_SECRET}
+            )
+            if not resp.ok:
+                body = await resp.text()
+                print(f"RESET FAILED: {base_url} returned {resp.status}: {body[:200]}")
+                raise Exception(f"Failed to reset session at {base_url}: HTTP {resp.status}")
+        except Exception as e:
+            print(f"CRITICAL CONNECTION ERROR at {base_url}: {e}")
+            raise e
 
     async def get_ground_truth(self, base_url) -> dict:
         try:
