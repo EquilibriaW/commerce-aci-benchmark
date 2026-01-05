@@ -1,26 +1,34 @@
 import { getCart } from 'lib/shopify';
 import { NextRequest, NextResponse } from 'next/server';
 
-const BENCHMARK_SECRET = process.env.BENCHMARK_SECRET || 'sk-bench-123';
+const BENCHMARK_SECRET = process.env.BENCHMARK_SECRET;
+
+// Robust string-to-cents conversion (avoids float precision issues)
+function toCents(amount: string): number {
+  const [dollars, cents = '00'] = amount.split('.');
+  return parseInt(dollars, 10) * 100 + parseInt(cents.padEnd(2, '0').slice(0, 2), 10);
+}
 
 export async function GET(request: NextRequest) {
+  // Fail closed - require secret
+  if (!BENCHMARK_SECRET) {
+    return NextResponse.json(
+      { error: 'Server misconfigured', message: 'BENCHMARK_SECRET not set' },
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
+    );
+  }
+
   // Security check - require benchmark secret header
   const providedSecret = request.headers.get('X-Benchmark-Secret');
   if (providedSecret !== BENCHMARK_SECRET) {
     return NextResponse.json(
       { error: 'Forbidden', message: 'Invalid or missing X-Benchmark-Secret header' },
-      { status: 403 }
+      { status: 403, headers: { 'Cache-Control': 'no-store' } }
     );
   }
 
   try {
     const cart = await getCart();
-
-    // Determine page type based on user-agent or query param
-    const userAgent = request.headers.get('user-agent') || '';
-    const isBot = /GPTBot|BenchmarkAgent|Claude|Anthropic|OpenAI/i.test(userAgent);
-    const modeParam = request.nextUrl.searchParams.get('mode');
-    const pageType = modeParam === 'human' ? 'human_view' : (isBot ? 'agent_view' : 'human_view');
 
     const state = {
       cart: cart ? {
@@ -31,42 +39,35 @@ export async function GET(request: NextRequest) {
           title: line.merchandise.product.title,
           variant: line.merchandise.title,
           quantity: line.quantity,
-          price: parseFloat(line.cost.totalAmount.amount)
+          unit_price_cents: toCents(line.merchandise.price.amount),
+          line_total_cents: toCents(line.cost.totalAmount.amount)
         })),
         total_items: cart.totalQuantity,
-        total_price: parseFloat(cart.cost.totalAmount.amount),
+        total_price_cents: toCents(cart.cost.totalAmount.amount),
         currency: cart.cost.totalAmount.currencyCode
       } : {
         id: null,
         items: [],
         total_items: 0,
-        total_price: 0,
+        total_price_cents: 0,
         currency: 'USD'
       },
-      last_action_status: 'success',
-      page_type: pageType,
       timestamp: new Date().toISOString()
     };
 
     return NextResponse.json(state, {
       status: 200,
-      headers: {
-        'Cache-Control': 'no-store'
-      }
+      headers: { 'Cache-Control': 'no-store' }
     });
   } catch (error) {
     console.error('State endpoint error:', error);
     return NextResponse.json({
-      cart: { id: null, items: [], total_items: 0, total_price: 0, currency: 'USD' },
-      last_action_status: 'error',
+      cart: { id: null, items: [], total_items: 0, total_price_cents: 0, currency: 'USD' },
       error: error instanceof Error ? error.message : 'Unknown error',
-      page_type: 'agent_view',
       timestamp: new Date().toISOString()
     }, {
       status: 500,
-      headers: {
-        'Cache-Control': 'no-store'
-      }
+      headers: { 'Cache-Control': 'no-store' }
     });
   }
 }

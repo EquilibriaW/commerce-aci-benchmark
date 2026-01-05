@@ -2,6 +2,77 @@ import { Product, Collection, Cart, Menu, Page } from '../shopify/types';
 
 // Mock product data
 export const mockProducts: Product[] = [
+  // ============================================
+  // BENCHMARK PRODUCTS (required for benchmark_computeruse.py)
+  // ============================================
+  {
+    id: 'gid://mock/Product/bench-1',
+    handle: 'black-t-shirt',
+    availableForSale: true,
+    title: 'Black T-Shirt',
+    description: 'Classic black t-shirt for everyday wear.',
+    descriptionHtml: '<p>Classic black t-shirt for everyday wear.</p>',
+    options: [{ id: 'opt-bench-1', name: 'Size', values: ['S', 'M', 'L'] }],
+    priceRange: {
+      maxVariantPrice: { amount: '20.00', currencyCode: 'USD' },
+      minVariantPrice: { amount: '20.00', currencyCode: 'USD' }
+    },
+    variants: [
+      { id: 'var-bench-tshirt-s', title: 'S', availableForSale: true, selectedOptions: [{ name: 'Size', value: 'S' }], price: { amount: '20.00', currencyCode: 'USD' } },
+      { id: 'var-bench-tshirt-m', title: 'M', availableForSale: true, selectedOptions: [{ name: 'Size', value: 'M' }], price: { amount: '20.00', currencyCode: 'USD' } },
+      { id: 'var-bench-tshirt-l', title: 'L', availableForSale: true, selectedOptions: [{ name: 'Size', value: 'L' }], price: { amount: '20.00', currencyCode: 'USD' } }
+    ],
+    featuredImage: { url: 'https://placehold.co/600x800/111111/white?text=Black+T-Shirt', altText: 'Black T-Shirt', width: 600, height: 800 },
+    images: [{ url: 'https://placehold.co/600x800/111111/white?text=Black+T-Shirt', altText: 'Black T-Shirt', width: 600, height: 800 }],
+    seo: { title: 'Black T-Shirt', description: 'Classic black t-shirt' },
+    tags: ['tshirt', 'basics', 'benchmark'],
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'gid://mock/Product/bench-2',
+    handle: 'acme-cup',
+    availableForSale: true,
+    title: 'Acme Cup',
+    description: 'Premium ceramic cup from Acme.',
+    descriptionHtml: '<p>Premium ceramic cup from Acme.</p>',
+    options: [],
+    priceRange: {
+      maxVariantPrice: { amount: '15.00', currencyCode: 'USD' },
+      minVariantPrice: { amount: '15.00', currencyCode: 'USD' }
+    },
+    variants: [
+      { id: 'var-bench-cup', title: 'Default', availableForSale: true, selectedOptions: [], price: { amount: '15.00', currencyCode: 'USD' } }
+    ],
+    featuredImage: { url: 'https://placehold.co/600x800/4a90d9/white?text=Acme+Cup', altText: 'Acme Cup', width: 600, height: 800 },
+    images: [{ url: 'https://placehold.co/600x800/4a90d9/white?text=Acme+Cup', altText: 'Acme Cup', width: 600, height: 800 }],
+    seo: { title: 'Acme Cup', description: 'Premium ceramic cup' },
+    tags: ['cup', 'drinkware', 'benchmark'],
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'gid://mock/Product/bench-3',
+    handle: 'hoodie',
+    availableForSale: true,
+    title: 'Hoodie',
+    description: 'Comfortable cotton hoodie.',
+    descriptionHtml: '<p>Comfortable cotton hoodie.</p>',
+    options: [],
+    priceRange: {
+      maxVariantPrice: { amount: '50.00', currencyCode: 'USD' },
+      minVariantPrice: { amount: '50.00', currencyCode: 'USD' }
+    },
+    variants: [
+      { id: 'var-bench-hoodie', title: 'Default', availableForSale: true, selectedOptions: [], price: { amount: '50.00', currencyCode: 'USD' } }
+    ],
+    featuredImage: { url: 'https://placehold.co/600x800/333333/white?text=Hoodie', altText: 'Hoodie', width: 600, height: 800 },
+    images: [{ url: 'https://placehold.co/600x800/333333/white?text=Hoodie', altText: 'Hoodie', width: 600, height: 800 }],
+    seo: { title: 'Hoodie', description: 'Comfortable cotton hoodie' },
+    tags: ['hoodie', 'outerwear', 'benchmark'],
+    updatedAt: new Date().toISOString()
+  },
+  // ============================================
+  // ORIGINAL CATALOG PRODUCTS
+  // ============================================
   {
     id: 'gid://mock/Product/1',
     handle: 'classic-leather-jacket',

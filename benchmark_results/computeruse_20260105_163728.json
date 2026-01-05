@@ -1,0 +1,286 @@
+{
+  "run_id": "20260105_163728",
+  "timestamp": "2026-01-05T16:37:28.747696",
+  "model": "claude-sonnet-4-5-20250514",
+  "beta": "computer-use-2025-01-24",
+  "config": {
+    "display_width": 1280,
+    "display_height": 800,
+    "max_iterations": 15,
+    "runs_per_task": 3,
+    "treatment_url": "http://localhost:3000",
+    "baseline_url": "http://localhost:3001"
+  },
+  "results": [
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t01_find_add_simple",
+      "run": 1,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t01_find_add_simple",
+      "run": 2,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t01_find_add_simple",
+      "run": 3,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t02_variant_size_l",
+      "run": 1,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t02_variant_size_l",
+      "run": 2,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t02_variant_size_l",
+      "run": 3,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t03_cart_total_check",
+      "run": 1,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t03_cart_total_check",
+      "run": 2,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t03_cart_total_check",
+      "run": 3,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment (Agent UI)",
+      "task": "t01_find_add_simple",
+      "run": 1,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment (Agent UI)",
+      "task": "t01_find_add_simple",
+      "run": 2,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment (Agent UI)",
+      "task": "t01_find_add_simple",
+      "run": 3,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment (Agent UI)",
+      "task": "t02_variant_size_l",
+      "run": 1,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment (Agent UI)",
+      "task": "t02_variant_size_l",
+      "run": 2,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment (Agent UI)",
+      "task": "t02_variant_size_l",
+      "run": 3,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment (Agent UI)",
+      "task": "t03_cart_total_check",
+      "run": 1,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment (Agent UI)",
+      "task": "t03_cart_total_check",
+      "run": 2,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment (Agent UI)",
+      "task": "t03_cart_total_check",
+      "run": 3,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t01_find_add_simple",
+      "run": 1,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t01_find_add_simple",
+      "run": 2,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t01_find_add_simple",
+      "run": 3,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t02_variant_size_l",
+      "run": 1,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t02_variant_size_l",
+      "run": 2,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t02_variant_size_l",
+      "run": 3,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t03_cart_total_check",
+      "run": 1,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t03_cart_total_check",
+      "run": 2,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t03_cart_total_check",
+      "run": 3,
+      "error": "'ascii' codec can't encode character '\\u2018' in position 0: ordinal not in range(128)"
+    }
+  ]
+}
