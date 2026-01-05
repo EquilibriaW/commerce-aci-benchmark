@@ -1,9 +1,8 @@
 import { getCart, getProducts } from 'lib/shopify';
-import { Metadata } from 'next';
 
-export const metadata: Metadata = {
-  title: 'Commerce API Reference v1.0',
-  description: 'API Documentation for Commerce Operations'
+export const metadata = {
+  title: 'Agent Store',
+  description: 'Compact agent interface'
 };
 
 export default async function AgentDashboard() {
@@ -12,299 +11,121 @@ export default async function AgentDashboard() {
     getProducts({})
   ]);
 
-  const cartJson = cart ? JSON.stringify(cart, null, 2) : '{ "items": [], "total": 0 }';
-
-  // Group products by category (simulated modules)
-  const apparelProducts = products.filter(p =>
-    p.handle.includes('shirt') || p.handle.includes('hoodie')
-  );
-  const accessoryProducts = products.filter(p =>
-    p.handle.includes('cup') || p.handle.includes('bag') || p.handle.includes('cap')
-  );
-  const otherProducts = products.filter(p =>
-    !apparelProducts.includes(p) && !accessoryProducts.includes(p)
-  );
+  const cartItems = cart?.lines || [];
+  const cartTotal = cart?.cost.totalAmount.amount || '0.00';
 
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: `
-        .doc-container {
-          display: flex;
-          min-height: calc(100vh - 80px);
-          background: #fcfcfc;
-        }
-        .sidebar {
-          width: 250px;
-          background: #f3f4f6;
-          border-right: 1px solid #e5e7eb;
-          padding: 20px 0;
-          position: sticky;
-          top: 0;
-          height: calc(100vh - 80px);
-          overflow-y: auto;
-        }
-        .sidebar-header {
-          padding: 0 20px 15px;
-          border-bottom: 1px solid #e5e7eb;
-          margin-bottom: 15px;
-        }
-        .sidebar-header h1 {
-          font-family: 'Georgia', serif;
-          font-size: 16px;
-          color: #1a1a1a;
-          margin-bottom: 5px;
-        }
-        .sidebar-header .version {
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+          font-family: Arial, sans-serif;
           font-size: 12px;
-          color: #6b7280;
+          padding: 8px;
+          background: #fff;
         }
-        .sidebar-nav {
-          padding: 0 15px;
-        }
-        .sidebar-nav a {
-          display: block;
-          padding: 8px 12px;
-          color: #2980b9;
-          text-decoration: none;
-          font-size: 14px;
-          border-radius: 4px;
-        }
-        .sidebar-nav a:hover {
-          background: #e5e7eb;
-          text-decoration: underline;
-        }
-        .sidebar-nav a.active {
-          background: #2980b9;
-          color: white;
-        }
-        .nav-section {
-          margin-bottom: 20px;
-        }
-        .nav-section-title {
-          font-size: 11px;
-          text-transform: uppercase;
-          color: #6b7280;
-          padding: 0 12px;
-          margin-bottom: 8px;
-          letter-spacing: 0.5px;
-        }
-        .main-content {
-          padding: 30px 40px;
-          max-width: 900px;
-          flex: 1;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          color: #333;
-          line-height: 1.6;
-        }
-        h1.page-title {
-          font-family: 'Georgia', serif;
-          font-size: 28px;
-          color: #1a1a1a;
-          border-bottom: 2px solid #e5e7eb;
-          padding-bottom: 15px;
-          margin-bottom: 25px;
-        }
-        h2.section-title {
-          font-family: 'Georgia', serif;
-          font-size: 20px;
-          color: #1a1a1a;
-          margin: 30px 0 15px;
-          padding-bottom: 8px;
-          border-bottom: 1px solid #e5e7eb;
-        }
-        h3.module-title {
-          font-family: 'Consolas', 'Monaco', monospace;
-          font-size: 16px;
-          color: #2980b9;
-          margin: 20px 0 10px;
-        }
-        .session-var {
-          background: #f8f9fa;
-          border: 1px solid #e5e7eb;
-          border-left: 4px solid #2980b9;
-          padding: 15px;
-          margin: 15px 0;
-          font-family: 'Consolas', 'Monaco', monospace;
-          font-size: 13px;
-        }
-        .session-var .var-name {
-          color: #d73a49;
-        }
-        .session-var pre {
-          margin-top: 10px;
-          background: #f1f3f5;
-          padding: 12px;
-          overflow-x: auto;
-          font-size: 12px;
-          border-radius: 4px;
-        }
-        .class-list {
-          list-style: none;
-          margin: 10px 0;
-          padding: 0;
-        }
-        .class-item {
-          padding: 12px 15px;
-          border: 1px solid #e5e7eb;
-          margin-bottom: 8px;
-          border-radius: 4px;
-          background: white;
-        }
-        .class-item:hover {
-          border-color: #2980b9;
-          background: #f8fafc;
-        }
-        .class-name {
-          font-family: 'Consolas', 'Monaco', monospace;
-          font-size: 14px;
-          color: #2980b9;
-          text-decoration: none;
-        }
-        .class-name:hover {
-          text-decoration: underline;
-        }
-        .class-name .keyword {
-          color: #d73a49;
-        }
-        .class-summary {
-          font-size: 13px;
-          color: #6b7280;
-          margin-top: 5px;
-          font-style: italic;
-        }
-        .class-meta {
-          font-size: 12px;
-          color: #9ca3af;
-          margin-top: 8px;
-        }
-        .class-meta span {
-          margin-right: 15px;
-        }
-        .badge {
-          display: inline-block;
-          padding: 2px 8px;
-          border-radius: 3px;
-          font-size: 11px;
-          font-weight: 500;
-        }
-        .badge-stock {
-          background: #d4edda;
-          color: #155724;
-        }
-        .badge-price {
-          background: #e2e3e5;
-          color: #383d41;
-        }
-        .doc-footer {
-          margin-top: 50px;
-          padding-top: 20px;
-          border-top: 1px solid #e5e7eb;
-          font-size: 12px;
-          color: #9ca3af;
-        }
+        h1 { font-size: 14px; margin-bottom: 8px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+        th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
+        th { background: #e0e0e0; font-weight: bold; }
+        input[type="number"] { width: 40px; padding: 2px; }
+        select { padding: 2px; max-width: 80px; }
+        input[type="text"], input[type="email"] { padding: 2px 4px; width: 120px; }
+        button { padding: 3px 8px; cursor: pointer; background: #333; color: #fff; border: none; }
+        button:hover { background: #555; }
+        .cart-section { background: #f5f5f5; padding: 8px; margin-bottom: 12px; border: 1px solid #999; }
+        .cart-row { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+        .checkout-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+        a { color: #0066cc; }
+        .empty { color: #666; font-style: italic; }
       `}} />
 
-      <div className="doc-container">
-        <aside className="sidebar">
-          <div className="sidebar-header">
-            <h1>Commerce API</h1>
-            <div className="version">v1.0 Reference</div>
-          </div>
-          <nav className="sidebar-nav">
-            <div className="nav-section">
-              <div className="nav-section-title">Navigation</div>
-              <a href="/agent" className="active">Module Index</a>
-              <a href="/llms.txt">llms.txt</a>
-            </div>
-            <div className="nav-section">
-              <div className="nav-section-title">Modules</div>
-              <a href="#products-apparel">products.apparel</a>
-              <a href="#products-accessories">products.accessories</a>
-              <a href="#products-other">products.other</a>
-            </div>
-            <div className="nav-section">
-              <div className="nav-section-title">Session</div>
-              <a href="#session-cart">session.cart</a>
-            </div>
-          </nav>
-        </aside>
+      <h1>AGENT STORE</h1>
 
-        <main className="main-content">
-          <h1 className="page-title">Commerce API Reference v1.0</h1>
-
-          <section id="session-cart">
-            <h2 className="section-title">Session Variables</h2>
-            <div className="session-var" data-agent-id="state:cart">
-              <span className="var-name">current_session.cart</span> =
-              <pre>{cartJson}</pre>
-            </div>
-          </section>
-
-          <section id="products-apparel">
-            <h2 className="section-title">Module Index</h2>
-
-            <h3 className="module-title">module: products.apparel</h3>
-            <ul className="class-list">
-              {apparelProducts.map(product => (
-                <li key={product.id} className="class-item" data-agent-id={`product:${product.handle}`}>
-                  <a href={`/agent/product/${product.handle}`} className="class-name" data-agent-id={`nav:product:${product.handle}`}>
-                    <span className="keyword">class</span> {product.title.replace(/\s+/g, '')}
-                  </a>
-                  <div className="class-summary">{product.description || 'Product instance'}</div>
-                  <div className="class-meta">
-                    <span className="badge badge-price">${product.priceRange.minVariantPrice.amount}</span>
-                    <span className="badge badge-stock">{product.availableForSale ? 'IN_STOCK' : 'OUT_OF_STOCK'}</span>
-                    <span>handle=&quot;{product.handle}&quot;</span>
-                  </div>
-                </li>
+      {/* CART - Compact summary */}
+      <div className="cart-section">
+        <strong>CART</strong> ({cartItems.length} items, ${cartTotal})
+        {cartItems.length === 0 ? (
+          <span className="empty"> - Empty</span>
+        ) : (
+          <table style={{ marginTop: '4px' }}>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Variant</th>
+                <th>Qty</th>
+                <th>Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cartItems.map(item => (
+                <tr key={item.id}>
+                  <td>{item.merchandise.product.handle}</td>
+                  <td>{item.merchandise.title}</td>
+                  <td>{item.quantity}</td>
+                  <td>${item.cost.totalAmount.amount}</td>
+                </tr>
               ))}
-            </ul>
-          </section>
+            </tbody>
+          </table>
+        )}
+        {cartItems.length > 0 && (
+          <form action="/checkout/complete" method="POST" className="checkout-row">
+            <label>Name:</label>
+            <input type="text" name="name" required placeholder="Your Name" />
+            <label>Email:</label>
+            <input type="email" name="email" required placeholder="you@email.com" />
+            <button type="submit">CHECKOUT (${cartTotal})</button>
+          </form>
+        )}
+      </div>
 
-          <section id="products-accessories">
-            <h3 className="module-title">module: products.accessories</h3>
-            <ul className="class-list">
-              {accessoryProducts.map(product => (
-                <li key={product.id} className="class-item" data-agent-id={`product:${product.handle}`}>
-                  <a href={`/agent/product/${product.handle}`} className="class-name" data-agent-id={`nav:product:${product.handle}`}>
-                    <span className="keyword">class</span> {product.title.replace(/\s+/g, '')}
-                  </a>
-                  <div className="class-summary">{product.description || 'Product instance'}</div>
-                  <div className="class-meta">
-                    <span className="badge badge-price">${product.priceRange.minVariantPrice.amount}</span>
-                    <span className="badge badge-stock">{product.availableForSale ? 'IN_STOCK' : 'OUT_OF_STOCK'}</span>
-                    <span>handle=&quot;{product.handle}&quot;</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+      {/* PRODUCTS - All in one table with inline add-to-cart */}
+      <table>
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Price</th>
+            <th>Variant</th>
+            <th>Qty</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {products.map(product => (
+            <tr key={product.id}>
+              <td>{product.handle}</td>
+              <td>${product.priceRange.minVariantPrice.amount}</td>
+              <td>
+                <form action="/agent/actions/add" method="POST" style={{ display: 'contents' }}>
+                  <input type="hidden" name="productHandle" value={product.handle} />
+                  {product.variants.length > 1 ? (
+                    <select name="variantId">
+                      {product.variants.map(v => (
+                        <option key={v.id} value={v.id}>{v.title}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <>
+                      <span>-</span>
+                      <input type="hidden" name="variantId" value={product.variants[0]?.id} />
+                    </>
+                  )}
+              </td>
+              <td>
+                  <input type="number" name="quantity" defaultValue={1} min={1} max={99} />
+              </td>
+              <td>
+                  <button type="submit">ADD</button>
+                </form>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
-          {otherProducts.length > 0 && (
-            <section id="products-other">
-              <h3 className="module-title">module: products.other</h3>
-              <ul className="class-list">
-                {otherProducts.map(product => (
-                  <li key={product.id} className="class-item" data-agent-id={`product:${product.handle}`}>
-                    <a href={`/agent/product/${product.handle}`} className="class-name" data-agent-id={`nav:product:${product.handle}`}>
-                      <span className="keyword">class</span> {product.title.replace(/\s+/g, '')}
-                    </a>
-                    <div className="class-summary">{product.description || 'Product instance'}</div>
-                    <div className="class-meta">
-                      <span className="badge badge-price">${product.priceRange.minVariantPrice.amount}</span>
-                      <span className="badge badge-stock">{product.availableForSale ? 'IN_STOCK' : 'OUT_OF_STOCK'}</span>
-                      <span>handle=&quot;{product.handle}&quot;</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          <div className="doc-footer">
-            <div>Commerce API Reference v1.0 | Generated: {new Date().toISOString()}</div>
-          </div>
-        </main>
+      <div style={{ fontSize: '10px', color: '#666', marginTop: '8px' }}>
+        <a href="/">Human UI</a> | <a href="/agent">Refresh</a>
       </div>
     </>
   );

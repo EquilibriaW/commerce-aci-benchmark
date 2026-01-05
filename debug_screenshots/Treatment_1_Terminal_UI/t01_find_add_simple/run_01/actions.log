@@ -1,0 +1,12 @@
+Step 01: screenshot - {'action': 'screenshot'}
+Step 02: left_click - at (904, 688)
+Step 03: left_click - at (1075, 692)
+Step 04: scroll - delta_y=0
+Step 05: scroll - delta_y=0
+Step 06: scroll - delta_y=0
+Step 07: left_click - at (119, 710)
+Step 08: left_click - at (213, 182)
+Step 09: left_click - at (640, 50)
+Step 10: key - ''
+Step 11: scroll - delta_y=0
+Step 12: screenshot - {'action': 'screenshot'}

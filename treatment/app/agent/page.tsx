@@ -1,9 +1,8 @@
 import { getCart, getProducts } from 'lib/shopify';
-import { Metadata } from 'next';
 
-export const metadata: Metadata = {
-  title: 'ACI // Agent Computer Interface',
-  description: 'System Terminal for Agent Operations'
+export const metadata = {
+  title: 'Agent Store',
+  description: 'Compact agent interface'
 };
 
 export default async function AgentDashboard() {
@@ -12,185 +11,122 @@ export default async function AgentDashboard() {
     getProducts({})
   ]);
 
-  const cartJson = cart ? JSON.stringify(cart, null, 2) : '{ "status": "empty", "items": [] }';
+  const cartItems = cart?.lines || [];
+  const cartTotal = cart?.cost.totalAmount.amount || '0.00';
 
   return (
-    <html lang="en">
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="robots" content="noindex" />
-        <title>ACI // Agent Computer Interface</title>
-        <style dangerouslySetInnerHTML={{ __html: `
-          * { box-sizing: border-box; }
-          body {
-            font-family: 'Courier New', Courier, monospace;
-            background: #ffffff;
-            color: #000000;
-            margin: 0;
-            padding: 20px;
-            font-size: 14px;
-            line-height: 1.4;
-          }
-          .header {
-            border: 2px solid #000;
-            padding: 10px 15px;
-            margin-bottom: 20px;
-            background: #f0f0f0;
-          }
-          .header h1 {
-            margin: 0;
-            font-size: 18px;
-            font-weight: bold;
-          }
-          .header .status {
-            color: #008000;
-            font-weight: bold;
-          }
-          nav {
-            border: 1px solid #000;
-            padding: 8px 12px;
-            margin-bottom: 20px;
-            background: #fafafa;
-          }
-          nav a {
-            color: #0000cc;
-            text-decoration: underline;
-            margin-right: 20px;
-          }
-          nav a:hover { color: #000099; }
-          .section {
-            border: 1px solid #000;
-            margin-bottom: 20px;
-          }
-          .section-header {
-            background: #000;
-            color: #fff;
-            padding: 6px 12px;
-            font-weight: bold;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-          }
-          .section-body {
-            padding: 12px;
-          }
-          pre {
-            background: #f5f5f5;
-            border: 1px solid #ccc;
-            padding: 12px;
-            overflow-x: auto;
-            margin: 0;
-            font-size: 12px;
-            max-height: 300px;
-            overflow-y: auto;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-          }
-          th, td {
-            border: 1px solid #000;
-            padding: 8px 10px;
-            text-align: left;
-          }
-          th {
-            background: #e0e0e0;
-            font-weight: bold;
-            text-transform: uppercase;
-            font-size: 11px;
-            letter-spacing: 0.5px;
-          }
-          tr:nth-child(even) { background: #f9f9f9; }
-          tr:hover { background: #ffffcc; }
-          .btn-select {
-            display: inline-block;
-            background: #000;
-            color: #fff;
-            padding: 4px 12px;
-            text-decoration: none;
-            font-weight: bold;
-            font-size: 12px;
-            border: none;
-          }
-          .btn-select:hover {
-            background: #333;
-            color: #fff;
-          }
-          .footer {
-            border-top: 2px solid #000;
-            padding-top: 10px;
-            margin-top: 20px;
-            font-size: 11px;
-            color: #666;
-          }
-        `}} />
-      </head>
-      <body>
-        <div className="header">
-          <h1>ACI // Agent Computer Interface - <span className="status">SYSTEM ONLINE</span></h1>
-        </div>
+    <>
+      <style dangerouslySetInnerHTML={{ __html: `
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+          font-family: Arial, sans-serif;
+          font-size: 12px;
+          padding: 8px;
+          background: #fff;
+        }
+        h1 { font-size: 14px; margin-bottom: 8px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+        th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
+        th { background: #e0e0e0; font-weight: bold; }
+        input[type="number"] { width: 40px; padding: 2px; }
+        select { padding: 2px; max-width: 80px; }
+        input[type="text"], input[type="email"] { padding: 2px 4px; width: 120px; }
+        button { padding: 3px 8px; cursor: pointer; background: #333; color: #fff; border: none; }
+        button:hover { background: #555; }
+        .cart-section { background: #f5f5f5; padding: 8px; margin-bottom: 12px; border: 1px solid #999; }
+        .cart-row { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+        .checkout-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+        a { color: #0066cc; }
+        .empty { color: #666; font-style: italic; }
+      `}} />
 
-        <nav>
-          <a href="/agent">[ DASHBOARD ]</a>
-          <a href="/llms.txt">[ LLMS.TXT ]</a>
-        </nav>
+      <h1>AGENT STORE</h1>
 
-        <div className="section">
-          <div className="section-header">Active Cart State</div>
-          <div className="section-body">
-            <pre data-agent-id="state:cart">{cartJson}</pre>
-          </div>
-        </div>
-
-        <div className="section">
-          <div className="section-header">Product Database ({products.length} records)</div>
-          <div className="section-body">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Handle</th>
-                  <th>Price</th>
-                  <th>Availability</th>
-                  <th>Action</th>
+      {/* CART - Compact summary */}
+      <div className="cart-section">
+        <strong>CART</strong> ({cartItems.length} items, ${cartTotal})
+        {cartItems.length === 0 ? (
+          <span className="empty"> - Empty</span>
+        ) : (
+          <table style={{ marginTop: '4px' }}>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Variant</th>
+                <th>Qty</th>
+                <th>Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cartItems.map(item => (
+                <tr key={item.id}>
+                  <td>{item.merchandise.product.handle}</td>
+                  <td>{item.merchandise.title}</td>
+                  <td>{item.quantity}</td>
+                  <td>${item.cost.totalAmount.amount}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {products.map(product => (
-                  <tr key={product.id} data-agent-id={`product:${product.handle}`}>
-                    <td>{product.id.slice(-8)}</td>
-                    <td>
-                      <a
-                        href={`/agent/product/${product.handle}`}
-                        data-agent-id={`nav:product:${product.handle}`}
-                      >
-                        {product.handle}
-                      </a>
-                    </td>
-                    <td>${product.priceRange.minVariantPrice.amount}</td>
-                    <td>{product.availableForSale ? 'IN_STOCK' : 'OUT_OF_STOCK'}</td>
-                    <td>
-                      <a
-                        href={`/agent/product/${product.handle}`}
-                        className="btn-select"
-                        data-agent-id={`select:${product.handle}`}
-                      >
-                        [SELECT]
-                      </a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {cartItems.length > 0 && (
+          <form action="/checkout/complete" method="POST" className="checkout-row">
+            <label>Name:</label>
+            <input type="text" name="name" required placeholder="Your Name" />
+            <label>Email:</label>
+            <input type="email" name="email" required placeholder="you@email.com" />
+            <button type="submit">CHECKOUT (${cartTotal})</button>
+          </form>
+        )}
+      </div>
 
-        <div className="footer">
-          <div>ACI System v1.0 | Session: {new Date().toISOString()}</div>
-        </div>
-      </body>
-    </html>
+      {/* PRODUCTS - All in one table with inline add-to-cart */}
+      <table>
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Price</th>
+            <th>Variant</th>
+            <th>Qty</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {products.map(product => (
+            <tr key={product.id}>
+              <td>{product.handle}</td>
+              <td>${product.priceRange.minVariantPrice.amount}</td>
+              <td>
+                <form action="/agent/actions/add" method="POST" style={{ display: 'contents' }}>
+                  <input type="hidden" name="productHandle" value={product.handle} />
+                  {product.variants.length > 1 ? (
+                    <select name="variantId">
+                      {product.variants.map(v => (
+                        <option key={v.id} value={v.id}>{v.title}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <>
+                      <span>-</span>
+                      <input type="hidden" name="variantId" value={product.variants[0]?.id} />
+                    </>
+                  )}
+              </td>
+              <td>
+                  <input type="number" name="quantity" defaultValue={1} min={1} max={99} />
+              </td>
+              <td>
+                  <button type="submit">ADD</button>
+                </form>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={{ fontSize: '10px', color: '#666', marginTop: '8px' }}>
+        <a href="/">Human UI</a> | <a href="/agent">Refresh</a>
+      </div>
+    </>
   );
 }

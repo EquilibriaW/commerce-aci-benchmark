@@ -1,5 +1,8 @@
+export const runtime = 'nodejs';
+
 import { addToCart, createCart, getCart } from 'lib/shopify';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -8,21 +11,24 @@ export async function POST(request: NextRequest) {
     const contentType = request.headers.get('content-type') || '';
     let variantId: string | null = null;
     let quantity: number = 1;
-    let productHandle: string | null = null;
+    let isFormSubmit = false;
 
     if (contentType.includes('application/json')) {
       const body = await request.json();
       variantId = body.variantId;
       quantity = body.quantity || 1;
-      productHandle = body.productHandle;
     } else {
+      // Form submission
+      isFormSubmit = true;
       const formData = await request.formData();
       variantId = formData.get('variantId') as string;
       quantity = parseInt(formData.get('quantity') as string, 10) || 1;
-      productHandle = formData.get('productHandle') as string;
     }
 
     if (!variantId) {
+      if (isFormSubmit) {
+        redirect('/agent?error=missing_variant');
+      }
       return NextResponse.json({
         success: false,
         error: 'Missing variantId parameter'
@@ -42,7 +48,12 @@ export async function POST(request: NextRequest) {
     // Add to cart
     await addToCart([{ merchandiseId: variantId, quantity }]);
 
-    // Get updated cart
+    // For form submissions, redirect back to agent page
+    if (isFormSubmit) {
+      redirect('/agent');
+    }
+
+    // For JSON API calls, return cart state
     const cart = await getCart();
 
     return NextResponse.json({
@@ -69,6 +80,11 @@ export async function POST(request: NextRequest) {
       }
     });
   } catch (error) {
+    // Check if it's a redirect (Next.js throws for redirects)
+    if (error instanceof Error && error.message === 'NEXT_REDIRECT') {
+      throw error;
+    }
+
     console.error('Add to cart error:', error);
     return NextResponse.json({
       success: false,
