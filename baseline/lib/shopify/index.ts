@@ -2,6 +2,7 @@
 
 export {
   addToCart,
+  clearAllCarts,
   createCart,
   getCart,
   getCollection,

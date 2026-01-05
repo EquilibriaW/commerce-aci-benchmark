@@ -1,0 +1,240 @@
+{
+  "run_id": "20260105_140921",
+  "timestamp": "2026-01-05T14:09:21.169344",
+  "treatment_results": [
+    {
+      "task_name": "add_to_cart_black-t-shirt",
+      "variant": "treatment",
+      "success": false,
+      "duration_ms": 68.49408149719238,
+      "api_calls": 3,
+      "error": null,
+      "metadata": {
+        "cart_state": {}
+      }
+    },
+    {
+      "task_name": "full_checkout",
+      "variant": "treatment",
+      "success": false,
+      "duration_ms": 19.89912986755371,
+      "api_calls": 5,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "task_name": "add_to_cart_hoodie",
+      "variant": "treatment",
+      "success": false,
+      "duration_ms": 14.414072036743164,
+      "api_calls": 3,
+      "error": null,
+      "metadata": {
+        "cart_state": {}
+      }
+    },
+    {
+      "task_name": "add_to_cart_acme-cup",
+      "variant": "treatment",
+      "success": false,
+      "duration_ms": 13.644933700561523,
+      "api_calls": 3,
+      "error": null,
+      "metadata": {
+        "cart_state": {}
+      }
+    },
+    {
+      "task_name": "multi_item_cart",
+      "variant": "treatment",
+      "success": false,
+      "duration_ms": 25.751829147338867,
+      "api_calls": 5,
+      "error": null,
+      "metadata": {
+        "expected": 3,
+        "actual": 0
+      }
+    },
+    {
+      "task_name": "add_to_cart_acme-cup",
+      "variant": "treatment",
+      "success": false,
+      "duration_ms": 13.524055480957031,
+      "api_calls": 3,
+      "error": null,
+      "metadata": {
+        "cart_state": {}
+      }
+    },
+    {
+      "task_name": "multi_item_cart",
+      "variant": "treatment",
+      "success": false,
+      "duration_ms": 26.38387680053711,
+      "api_calls": 5,
+      "error": null,
+      "metadata": {
+        "expected": 3,
+        "actual": 0
+      }
+    },
+    {
+      "task_name": "full_checkout",
+      "variant": "treatment",
+      "success": false,
+      "duration_ms": 18.1119441986084,
+      "api_calls": 5,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "task_name": "add_to_cart_black-t-shirt",
+      "variant": "treatment",
+      "success": false,
+      "duration_ms": 13.271093368530273,
+      "api_calls": 3,
+      "error": null,
+      "metadata": {
+        "cart_state": {}
+      }
+    },
+    {
+      "task_name": "add_to_cart_hoodie",
+      "variant": "treatment",
+      "success": false,
+      "duration_ms": 13.24319839477539,
+      "api_calls": 3,
+      "error": null,
+      "metadata": {
+        "cart_state": {}
+      }
+    }
+  ],
+  "baseline_results": [
+    {
+      "task_name": "add_to_cart_black-t-shirt",
+      "variant": "baseline",
+      "success": false,
+      "duration_ms": 54.92568016052246,
+      "api_calls": 3,
+      "error": null,
+      "metadata": {
+        "cart_state": {}
+      }
+    },
+    {
+      "task_name": "full_checkout",
+      "variant": "baseline",
+      "success": false,
+      "duration_ms": 30.796051025390625,
+      "api_calls": 5,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "task_name": "add_to_cart_hoodie",
+      "variant": "baseline",
+      "success": false,
+      "duration_ms": 19.890785217285156,
+      "api_calls": 3,
+      "error": null,
+      "metadata": {
+        "cart_state": {}
+      }
+    },
+    {
+      "task_name": "add_to_cart_acme-cup",
+      "variant": "baseline",
+      "success": false,
+      "duration_ms": 17.875194549560547,
+      "api_calls": 3,
+      "error": null,
+      "metadata": {
+        "cart_state": {}
+      }
+    },
+    {
+      "task_name": "multi_item_cart",
+      "variant": "baseline",
+      "success": false,
+      "duration_ms": 32.553911209106445,
+      "api_calls": 5,
+      "error": null,
+      "metadata": {
+        "expected": 3,
+        "actual": 0
+      }
+    },
+    {
+      "task_name": "add_to_cart_acme-cup",
+      "variant": "baseline",
+      "success": false,
+      "duration_ms": 16.939878463745117,
+      "api_calls": 3,
+      "error": null,
+      "metadata": {
+        "cart_state": {}
+      }
+    },
+    {
+      "task_name": "multi_item_cart",
+      "variant": "baseline",
+      "success": false,
+      "duration_ms": 32.77897834777832,
+      "api_calls": 5,
+      "error": null,
+      "metadata": {
+        "expected": 3,
+        "actual": 0
+      }
+    },
+    {
+      "task_name": "full_checkout",
+      "variant": "baseline",
+      "success": false,
+      "duration_ms": 23.078203201293945,
+      "api_calls": 5,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "task_name": "add_to_cart_black-t-shirt",
+      "variant": "baseline",
+      "success": false,
+      "duration_ms": 19.43206787109375,
+      "api_calls": 3,
+      "error": null,
+      "metadata": {
+        "cart_state": {}
+      }
+    },
+    {
+      "task_name": "add_to_cart_hoodie",
+      "variant": "baseline",
+      "success": false,
+      "duration_ms": 20.256996154785156,
+      "api_calls": 3,
+      "error": null,
+      "metadata": {
+        "cart_state": {}
+      }
+    }
+  ],
+  "summary": {
+    "treatment": {
+      "total": 10,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "avg_duration_ms": 22.673821449279785,
+      "avg_api_calls": 3.8
+    },
+    "baseline": {
+      "total": 10,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "avg_duration_ms": 26.852774620056152,
+      "avg_api_calls": 3.8
+    }
+  }
+}

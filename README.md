@@ -19,8 +19,8 @@ ACI is a "Shadow DOM" approach for AI agents - providing machine-readable endpoi
 - **`/agent`** - Simplified HTML dashboard (no JavaScript/Tailwind)
 - **`/agent/product/[slug]`** - Native HTML forms for add-to-cart
 - **`/agent/actions/add`** - JSON API for cart operations
-- **`/agent/state`** - Current cart state (secured)
-- **`/agent/reset`** - Reset cart for test isolation (secured)
+- **`/agent/state`** - Current cart state (secured with X-Benchmark-Secret)
+- **`/agent/reset`** - Reset cart for test isolation (secured with X-Benchmark-Secret)
 
 ## Quick Start
 
@@ -28,6 +28,8 @@ ACI is a "Shadow DOM" approach for AI agents - providing machine-readable endpoi
 
 - Node.js 18+
 - npm
+- Python 3.11+ (for benchmark script)
+- conda (optional, for environment management)
 
 ### Installation
 
@@ -45,6 +47,38 @@ cd ../baseline
 npm install --legacy-peer-deps
 ```
 
+### Python Environment Setup
+
+**Option 1: Using conda (recommended)**
+```bash
+cd commerce-aci-benchmark
+conda env create -f environment.yml
+conda activate commerce-aci-benchmark
+
+# Install Playwright browsers
+playwright install chromium
+```
+
+**Option 2: Using pip**
+```bash
+pip install -r requirements.txt
+
+# Install Playwright browsers
+playwright install chromium
+```
+
+### Environment Variables
+
+Create a `.env` file or export these variables:
+
+```bash
+# Required for benchmark
+export OPENAI_API_KEY="sk-..."
+
+# Optional: Custom benchmark secret (default: sk-bench-123)
+export BENCHMARK_SECRET="your-secret"
+```
+
 ### Running the Servers
 
 ```bash
@@ -56,6 +90,32 @@ npm run dev
 cd baseline
 npm run dev -- -p 3001
 ```
+
+### Running the Benchmark
+
+The benchmark uses GPT-4o to drive a Playwright browser through the e-commerce tasks.
+
+With both servers running:
+
+```bash
+# Run the benchmark (requires OPENAI_API_KEY)
+python benchmark_science.py
+```
+
+**Benchmark Configuration** (in `benchmark_science.py`):
+- `MAX_ITERATIONS = 15` - Max steps per task
+- `RUNS_PER_TASK = 5` - Trials per task/condition
+
+**Conditions Tested**:
+1. **Control (Human UI)** - Baseline at port 3001
+2. **Treatment (Agent UI)** - Starts at `/agent` on port 3000
+3. **Discovery (SEO)** - Starts at root on port 3000, agent must discover `/agent`
+
+**Metrics Reported**:
+- Accuracy (task completion rate)
+- ACS (Average Completion Steps)
+- Adoption % (how often agent finds/uses `/agent` routes)
+- Intensity (API calls to agent endpoints)
 
 ## Architecture
 
@@ -125,7 +185,7 @@ curl -X POST \
 ```bash
 curl -X POST \
   -H "Content-Type: application/json" \
-  -d '{"variantId": "var-1-m", "quantity": 1}' \
+  -d '{"variantId": "var-tshirt-m", "quantity": 1}' \
   http://localhost:3000/agent/actions/add
 ```
 
@@ -151,14 +211,20 @@ def get_state(base_url):
         headers={"X-Benchmark-Secret": SECRET}
     ).json()
 
+def add_to_cart(base_url, variant_id, quantity=1):
+    return requests.post(
+        f"{base_url}/agent/actions/add",
+        json={"variantId": variant_id, "quantity": quantity}
+    ).json()
+
 def run_agent_task(base_url, task):
     reset_state(base_url)
     # ... run your agent ...
     return get_state(base_url)
 
 # Compare treatment vs baseline
-treatment_result = run_agent_task(TREATMENT_URL, "Add a leather jacket to cart")
-baseline_result = run_agent_task(BASELINE_URL, "Add a leather jacket to cart")
+treatment_result = run_agent_task(TREATMENT_URL, "Add a black t-shirt to cart")
+baseline_result = run_agent_task(BASELINE_URL, "Add a black t-shirt to cart")
 ```
 
 ## Directory Structure
@@ -166,14 +232,18 @@ baseline_result = run_agent_task(BASELINE_URL, "Add a leather jacket to cart")
 ```
 commerce-aci-benchmark/
 ├── README.md
+├── benchmark_science.py       # Main benchmark runner
+├── requirements.txt           # Python dependencies
+├── environment.yml            # Conda environment
+├── benchmark_results/         # Output directory (generated)
 ├── treatment/                 # ACI-enabled variant
 │   ├── app/
 │   │   ├── agent/            # Agent-specific routes
 │   │   │   ├── page.tsx      # Agent dashboard
 │   │   │   ├── product/      # Agent product pages
-│   │   │   ├── actions/      # JSON APIs
-│   │   │   ├── state/        # Cart state endpoint
-│   │   │   └── reset/        # Reset endpoint
+│   │   │   ├── actions/add/  # Add to cart JSON API
+│   │   │   ├── state/        # Cart state (secured)
+│   │   │   └── reset/        # Reset state (secured)
 │   │   └── llms.txt/         # Machine-readable catalog
 │   ├── lib/mock/             # Mock data provider
 │   ├── middleware.ts         # Bot routing
