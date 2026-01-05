@@ -1,5 +1,3 @@
-export const runtime = 'nodejs'; // CRITICAL: Ensures consistent server instance
-
 import { getCart, getCompletedOrder } from 'lib/shopify';
 import { NextRequest, NextResponse } from 'next/server';
 

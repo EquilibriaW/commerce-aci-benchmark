@@ -48,7 +48,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 DISPLAY_WIDTH = 1280
 DISPLAY_HEIGHT = 800
 
-MAX_ITERATIONS = 12  # Reduced from 15
+MAX_ITERATIONS = 18
 RUNS_PER_TASK = 1
 
 # Debug settings
@@ -296,9 +296,13 @@ class ComputerUseAgent:
                     messages=self.conversation_history
                 )
             except Exception as e:
-                if "rate_limit" in str(e).lower():
+                error_str = str(e).lower()
+                if "rate_limit" in error_str:
                     console.print("    [yellow]Rate limited, waiting 60s...[/yellow]")
                     await asyncio.sleep(60)
+                elif "500" in str(e) or "internal" in error_str:
+                    console.print("    [yellow]API 500 error, retrying in 10s...[/yellow]")
+                    await asyncio.sleep(10)
                 else:
                     raise
 
@@ -332,8 +336,9 @@ class ComputerUseAgent:
                 elif action_type == 'type':
                     self._log_action(self.step_count, action_type, f"'{text[:30]}...'")
                 elif action_type == 'scroll':
-                    delta_y = block.input.get('delta_y', 0)
-                    self._log_action(self.step_count, action_type, f"delta_y={delta_y}")
+                    scroll_dir = block.input.get('scroll_direction', 'down')
+                    scroll_amt = block.input.get('scroll_amount', 0)
+                    self._log_action(self.step_count, action_type, f"{scroll_dir} by {scroll_amt}")
                 elif action_type == 'key':
                     key = block.input.get('key', '')
                     self._log_action(self.step_count, action_type, f"'{key}'")
@@ -425,16 +430,29 @@ class ComputerUseAgent:
             elif action == "scroll":
                 x = action_input.get("coordinate", [DISPLAY_WIDTH // 2, DISPLAY_HEIGHT // 2])[0]
                 y = action_input.get("coordinate", [DISPLAY_WIDTH // 2, DISPLAY_HEIGHT // 2])[1]
-                delta_x = action_input.get("delta_x", 0)
-                delta_y = action_input.get("delta_y", 0)
+                # New API uses scroll_direction and scroll_amount
+                scroll_direction = action_input.get("scroll_direction", "down")
+                scroll_amount = action_input.get("scroll_amount", 3)
+                # Convert direction+amount to delta pixels (100px per unit)
+                delta_x, delta_y = 0, 0
+                pixels_per_unit = 100
+                if scroll_direction == "down":
+                    delta_y = scroll_amount * pixels_per_unit
+                elif scroll_direction == "up":
+                    delta_y = -scroll_amount * pixels_per_unit
+                elif scroll_direction == "right":
+                    delta_x = scroll_amount * pixels_per_unit
+                elif scroll_direction == "left":
+                    delta_x = -scroll_amount * pixels_per_unit
                 await self.page.mouse.move(x, y)
                 await self.page.mouse.wheel(delta_x, delta_y)
                 await asyncio.sleep(0.5)  # Wait for scroll to complete
-                result_text = f"Scrolled at ({x}, {y}) by delta ({delta_x}, {delta_y})"
+                result_text = f"Scrolled {scroll_direction} by {scroll_amount} at ({x}, {y})"
 
             elif action == "type":
                 text = action_input.get("text", "")
-                await self.page.keyboard.type(text)
+                # Use delay between keystrokes (12ms like Anthropic reference)
+                await self.page.keyboard.type(text, delay=12)
                 result_text = f"Typed: {text[:50]}..."
 
             elif action == "key":

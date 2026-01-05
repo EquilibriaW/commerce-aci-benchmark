@@ -26,7 +26,7 @@ export default async function AgentDashboard() {
         }
         h1 { font-size: 14px; margin-bottom: 8px; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-        th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
+        th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; vertical-align: middle; }
         th { background: #e0e0e0; font-weight: bold; }
         input[type="number"] { width: 40px; padding: 2px; }
         select { padding: 2px; max-width: 80px; }
@@ -34,10 +34,10 @@ export default async function AgentDashboard() {
         button { padding: 3px 8px; cursor: pointer; background: #333; color: #fff; border: none; }
         button:hover { background: #555; }
         .cart-section { background: #f5f5f5; padding: 8px; margin-bottom: 12px; border: 1px solid #999; }
-        .cart-row { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
-        .checkout-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+        .checkout-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
         a { color: #0066cc; }
         .empty { color: #666; font-style: italic; }
+        .inline-form { display: inline-flex; gap: 4px; align-items: center; }
       `}} />
 
       <h1>AGENT STORE</h1>
@@ -86,9 +86,7 @@ export default async function AgentDashboard() {
           <tr>
             <th>Product</th>
             <th>Price</th>
-            <th>Variant</th>
-            <th>Qty</th>
-            <th>Action</th>
+            <th>Add to Cart</th>
           </tr>
         </thead>
         <tbody>
@@ -97,7 +95,7 @@ export default async function AgentDashboard() {
               <td>{product.handle}</td>
               <td>${product.priceRange.minVariantPrice.amount}</td>
               <td>
-                <form action="/agent/actions/add" method="POST" style={{ display: 'contents' }}>
+                <form action="/agent/actions/add" method="POST" className="inline-form">
                   <input type="hidden" name="productHandle" value={product.handle} />
                   {product.variants.length > 1 ? (
                     <select name="variantId">
@@ -106,16 +104,9 @@ export default async function AgentDashboard() {
                       ))}
                     </select>
                   ) : (
-                    <>
-                      <span>-</span>
-                      <input type="hidden" name="variantId" value={product.variants[0]?.id} />
-                    </>
+                    <input type="hidden" name="variantId" value={product.variants[0]?.id} />
                   )}
-              </td>
-              <td>
                   <input type="number" name="quantity" defaultValue={1} min={1} max={99} />
-              </td>
-              <td>
                   <button type="submit">ADD</button>
                 </form>
               </td>

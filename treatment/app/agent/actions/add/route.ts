@@ -1,5 +1,3 @@
-export const runtime = 'nodejs';
-
 import { addToCart, createCart, getCart } from 'lib/shopify';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
