@@ -78,6 +78,16 @@ export default function MobileMenu({ menu }: { menu: Menu[] }) {
                 </div>
                 {menu.length ? (
                   <ul className="flex w-full flex-col">
+                    <li className="py-2 text-xl">
+                      <Link
+                        href="/agent"
+                        prefetch={true}
+                        onClick={closeMobileMenu}
+                        className="font-mono font-bold text-blue-600 hover:text-blue-800"
+                      >
+                        [⚡ Agent Terminal]
+                      </Link>
+                    </li>
                     {menu.map((item: Menu) => (
                       <li
                         className="py-2 text-xl text-black transition-colors hover:text-neutral-500 dark:text-white"

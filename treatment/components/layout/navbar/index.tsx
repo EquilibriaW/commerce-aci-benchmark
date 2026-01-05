@@ -33,6 +33,15 @@ export async function Navbar() {
           </Link>
           {menu.length ? (
             <ul className="hidden gap-6 text-sm md:flex md:items-center">
+              <li>
+                <Link
+                  href="/agent"
+                  prefetch={true}
+                  className="font-mono font-bold text-blue-600 underline-offset-4 hover:text-blue-800 hover:underline"
+                >
+                  [⚡ Agent Terminal]
+                </Link>
+              </li>
               {menu.map((item: Menu) => (
                 <li key={item.title}>
                   <Link
