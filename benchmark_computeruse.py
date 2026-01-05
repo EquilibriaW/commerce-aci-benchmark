@@ -38,6 +38,7 @@ from rich.table import Table
 
 # --- CONFIGURATION ---
 URL_TREATMENT = os.getenv("URL_TREATMENT", "http://localhost:3000")
+URL_TREATMENT_DOCS = os.getenv("URL_TREATMENT_DOCS", "http://localhost:3002")
 URL_BASELINE = os.getenv("URL_BASELINE", "http://localhost:3001")
 
 BENCHMARK_SECRET = os.getenv("BENCHMARK_SECRET", "sk-bench-123")
@@ -57,22 +58,18 @@ DEBUG_DIR = Path("debug_screenshots")
 console = Console()
 
 # System prompt (cached across steps)
-SYSTEM_PROMPT = """You are an AI agent tasked with completing e-commerce tasks on a shopping website.
+SYSTEM_PROMPT = """You are an AI agent operating a computer to complete e-commerce tasks.
+Your core objectives are TRUST, SPEED, and CORRECTNESS.
 
-You can use the computer tool to interact with the webpage:
-- left_click: Click at coordinates
-- type: Type text
-- scroll: Scroll the page
-- key: Press keyboard keys
+You have access to a web browser and can interact using the computer tool.
 
-IMPORTANT GUIDELINES:
-1. Look carefully at the screenshot to find products and UI elements
-2. Click on product images or titles to view product details
-3. Look for "Add to Cart" buttons
-4. For variant selection (like Size), click on the variant options before adding to cart
-5. Navigate using the visible UI elements
+GUIDELINES:
+1. **Analyze the Interface**: Scan the screen. You may encounter standard graphical interfaces or specialized high-density agent interfaces. Use whichever interface allows you to complete the task most efficiently.
+2. **Prioritize Speed**: Choose the path that requires the fewest steps (clicks, scrolls, navigations) to achieve the goal.
+3. **Ensure Correctness**: Verify that the product, variant (size/color), and quantity match the request exactly before finalizing.
+4. **Execution**: Use the computer tool to click coordinates, type text, or scroll.
 
-When you have completed the task, respond with "TASK_COMPLETE" in your message."""
+When the task is successfully completed, respond with "TASK_COMPLETE"."""
 
 # --- VERIFIABLE TASK SUITE ---
 # Benchmark products:
@@ -83,7 +80,7 @@ When you have completed the task, respond with "TASK_COMPLETE" in your message."
 TASKS = [
     {
         "id": "t01_find_add_simple",
-        "instruction": "Find the Black T-Shirt product and add 1 unit to the cart.",
+        "instruction": "Buy me a black T-shirt",
         "verifier": lambda s: any(
             i['slug'] == 'black-t-shirt' and i['quantity'] >= 1
             for i in s['cart']['items']
@@ -91,7 +88,7 @@ TASKS = [
     },
     {
         "id": "t02_variant_size_l",
-        "instruction": "Find the Black T-Shirt, select Size L, and add it to the cart.",
+        "instruction": "But me a large black T-shirt",
         "verifier": lambda s: any(
             i['slug'] == 'black-t-shirt' and i.get('variant') == 'L'
             for i in s['cart']['items']
@@ -99,7 +96,7 @@ TASKS = [
     },
     {
         "id": "t03_cart_total_check",
-        "instruction": "Add 2 Acme Cup ($15 each) and 1 Hoodie ($50) to the cart. The total should be $80.",
+        "instruction": "Get me two acme cups and a hoodie, for less 90 dollars",
         "verifier": lambda s: s['cart']['total_price_cents'] == 8000
     }
 ]
@@ -367,7 +364,7 @@ class ComputerUseAgent:
                 x = action_input.get("coordinate", [0, 0])[0]
                 y = action_input.get("coordinate", [0, 0])[1]
                 await self.page.mouse.click(x, y)
-                await asyncio.sleep(0.5)  # Wait for any navigation/updates
+                await asyncio.sleep(2.0)  # Wait for any navigation/updates
                 result_text = f"Left clicked at ({x}, {y})"
 
             elif action == "left_click_drag":
@@ -404,7 +401,7 @@ class ComputerUseAgent:
                 delta_y = action_input.get("delta_y", 0)
                 await self.page.mouse.move(x, y)
                 await self.page.mouse.wheel(delta_x, delta_y)
-                await asyncio.sleep(0.3)  # Wait for scroll to complete
+                await asyncio.sleep(0.5)  # Wait for scroll to complete
                 result_text = f"Scrolled at ({x}, {y}) by delta ({delta_x}, {delta_y})"
 
             elif action == "type":
@@ -550,14 +547,24 @@ async def main():
             "api_url": URL_BASELINE
         },
         {
-            "name": "Treatment (Agent UI)",
+            "name": "Treatment 1 (Terminal UI)",
             "target_url": f"{URL_TREATMENT}/agent",
             "api_url": URL_TREATMENT
         },
         {
-            "name": "Discovery (Root)",
+            "name": "Discovery 1 (Terminal Root)",
             "target_url": URL_TREATMENT,
             "api_url": URL_TREATMENT
+        },
+        {
+            "name": "Treatment 2 (Doc UI)",
+            "target_url": f"{URL_TREATMENT_DOCS}/agent",
+            "api_url": URL_TREATMENT_DOCS
+        },
+        {
+            "name": "Discovery 2 (Doc Root)",
+            "target_url": URL_TREATMENT_DOCS,
+            "api_url": URL_TREATMENT_DOCS
         }
     ]
 
