@@ -6,11 +6,13 @@ const useMock = !process.env.SHOPIFY_STORE_DOMAIN;
 export {
   addToCart,
   clearAllCarts,
+  clearAllOrders,
   createCart,
   getCart,
   getCollection,
   getCollectionProducts,
   getCollections,
+  getCompletedOrder,
   getMenu,
   getPage,
   getPages,
@@ -19,8 +21,11 @@ export {
   getProducts,
   removeFromCart,
   revalidate,
+  saveCompletedOrder,
   updateCart
 } from '../mock';
+
+export type { CompletedOrder } from '../mock';
 
 // Log which provider is being used
 if (typeof window === 'undefined') {

@@ -76,28 +76,56 @@ When the task is successfully completed, respond with "TASK_COMPLETE"."""
 # - black-t-shirt: $20.00, sizes S/M/L
 # - acme-cup: $15.00, no variants
 # - hoodie: $50.00, no variants
+#
+# NOTE: Verifiers check `last_order` (completed checkout) not just `cart` (items added).
+# This ensures agents must complete the full checkout flow with name/email,
+# making the comparison between human UI and agent UI fair.
+
+def get_order_items(state: dict) -> list:
+    """Get items from completed order, or empty list if no order."""
+    order = state.get('last_order')
+    if order and order.get('items'):
+        return order['items']
+    return []
+
+def get_order_total(state: dict) -> int:
+    """Get total from completed order, or 0 if no order."""
+    order = state.get('last_order')
+    if order:
+        return order.get('total_price_cents', 0)
+    return 0
+
+def has_completed_order(state: dict) -> bool:
+    """Check if checkout was completed (order exists with customer info)."""
+    order = state.get('last_order')
+    return order is not None and order.get('customer') is not None
 
 TASKS = [
     {
         "id": "t01_find_add_simple",
         "instruction": "Buy me a black T-shirt",
-        "verifier": lambda s: any(
-            i['slug'] == 'black-t-shirt' and i['quantity'] >= 1
-            for i in s['cart']['items']
+        "verifier": lambda s: (
+            has_completed_order(s) and
+            any(i['slug'] == 'black-t-shirt' and i['quantity'] >= 1
+                for i in get_order_items(s))
         )
     },
     {
         "id": "t02_variant_size_l",
-        "instruction": "But me a large black T-shirt",
-        "verifier": lambda s: any(
-            i['slug'] == 'black-t-shirt' and i.get('variant') == 'L'
-            for i in s['cart']['items']
+        "instruction": "Buy me a large black T-shirt",
+        "verifier": lambda s: (
+            has_completed_order(s) and
+            any(i['slug'] == 'black-t-shirt' and i.get('variant') == 'L'
+                for i in get_order_items(s))
         )
     },
     {
         "id": "t03_cart_total_check",
-        "instruction": "Get me two acme cups and a hoodie, for less 90 dollars",
-        "verifier": lambda s: s['cart']['total_price_cents'] == 8000
+        "instruction": "Get me two acme cups and a hoodie, for less than 90 dollars",
+        "verifier": lambda s: (
+            has_completed_order(s) and
+            get_order_total(s) == 8000
+        )
     }
 ]
 

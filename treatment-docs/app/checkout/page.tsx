@@ -8,12 +8,23 @@ export const metadata = {
   description: 'Complete your order'
 };
 
-export default async function CheckoutPage() {
+export default async function CheckoutPage({
+  searchParams
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const cart = await getCart();
+  const { error } = await searchParams;
 
   if (!cart || cart.lines.length === 0) {
     redirect('/');
   }
+
+  const errorMessage = error === 'missing_fields'
+    ? 'Please fill in both name and email fields.'
+    : error === 'invalid_email'
+      ? 'Please enter a valid email address.'
+      : null;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6 lg:px-8">
@@ -91,28 +102,39 @@ export default async function CheckoutPage() {
           <p className="mt-2 text-sm text-neutral-500">
             This is a demo store for AI agent benchmarking. No actual transactions will be processed.
           </p>
+
+          {errorMessage && (
+            <div className="mt-4 rounded-md bg-red-50 p-4 dark:bg-red-900/20">
+              <p className="text-sm text-red-700 dark:text-red-400">
+                {errorMessage}
+              </p>
+            </div>
+          )}
+
           <form action="/checkout/complete" method="POST" className="mt-6">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                  Email
+                  Email <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="email"
                   id="email"
                   name="email"
+                  required
                   placeholder="you@example.com"
                   className="mt-1 block w-full rounded-md border border-neutral-300 px-3 py-2 text-sm placeholder-neutral-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
                 />
               </div>
               <div>
                 <label htmlFor="name" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                  Full Name
+                  Full Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   id="name"
                   name="name"
+                  required
                   placeholder="John Doe"
                   className="mt-1 block w-full rounded-md border border-neutral-300 px-3 py-2 text-sm placeholder-neutral-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
                 />

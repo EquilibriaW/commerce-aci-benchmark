@@ -1,6 +1,6 @@
 export const runtime = 'nodejs'; // CRITICAL: Ensures consistent server instance
 
-import { getCart } from 'lib/shopify';
+import { getCart, getCompletedOrder } from 'lib/shopify';
 import { NextRequest, NextResponse } from 'next/server';
 
 const BENCHMARK_SECRET = process.env.BENCHMARK_SECRET;
@@ -32,6 +32,11 @@ export async function GET(request: NextRequest) {
   try {
     const cart = await getCart();
 
+    // Get the cartId from cookies to look up any completed order
+    const cartIdCookie = request.cookies.get('cartId');
+    const cartId = cartIdCookie?.value;
+    const completedOrder = cartId ? getCompletedOrder(cartId) : undefined;
+
     const state = {
       cart: cart ? {
         id: cart.id,
@@ -54,6 +59,8 @@ export async function GET(request: NextRequest) {
         total_price_cents: 0,
         currency: 'USD'
       },
+      // Include completed order if checkout was completed
+      last_order: completedOrder || null,
       timestamp: new Date().toISOString()
     };
 
@@ -65,6 +72,7 @@ export async function GET(request: NextRequest) {
     console.error('State endpoint error:', error);
     return NextResponse.json({
       cart: { id: null, items: [], total_items: 0, total_price_cents: 0, currency: 'USD' },
+      last_order: null,
       error: error instanceof Error ? error.message : 'Unknown error',
       timestamp: new Date().toISOString()
     }, {

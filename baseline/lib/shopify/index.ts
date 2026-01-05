@@ -1,13 +1,18 @@
-// Baseline: Using mock provider (no Shopify API keys required)
+// Provider switcher: Uses mock data when SHOPIFY_STORE_DOMAIN is not set
 
+const useMock = !process.env.SHOPIFY_STORE_DOMAIN;
+
+// Re-export everything from the appropriate provider
 export {
   addToCart,
   clearAllCarts,
+  clearAllOrders,
   createCart,
   getCart,
   getCollection,
   getCollectionProducts,
   getCollections,
+  getCompletedOrder,
   getMenu,
   getPage,
   getPages,
@@ -16,10 +21,13 @@ export {
   getProducts,
   removeFromCart,
   revalidate,
+  saveCompletedOrder,
   updateCart
 } from '../mock';
 
-// Log provider
+export type { CompletedOrder } from '../mock';
+
+// Log which provider is being used
 if (typeof window === 'undefined') {
-  console.log('[Commerce Baseline] Using MOCK provider');
+  console.log(`[Commerce] Using ${useMock ? 'MOCK' : 'SHOPIFY'} provider`);
 }

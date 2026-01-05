@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Cart, Collection, Menu, Page, Product } from '../shopify/types';
 import { TAGS } from '../constants';
 import { mockProducts, mockCollections, mockMenus, mockPages } from './data';
-import { getStoredCart, setStoredCart, deleteStoredCart, clearAllCarts } from './storage';
+import { getStoredCart, setStoredCart, deleteStoredCart, clearAllCarts, saveCompletedOrder, getCompletedOrder, clearAllOrders, CompletedOrder } from './storage';
 
 function generateCartId(): string {
   return `cart_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -329,5 +329,6 @@ export async function revalidate(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({ status: 200, revalidated: true, now: Date.now() });
 }
 
-// Export clearAllCarts for the reset endpoint
-export { clearAllCarts };
+// Export storage functions for endpoints
+export { clearAllCarts, saveCompletedOrder, getCompletedOrder, clearAllOrders };
+export type { CompletedOrder };

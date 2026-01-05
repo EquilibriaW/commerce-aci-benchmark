@@ -1,7 +1,7 @@
 export const runtime = 'nodejs'; // CRITICAL: Ensures consistent server instance
 
 import { randomUUID } from 'crypto';
-import { deleteStoredCart, setStoredCart } from 'lib/mock/storage';
+import { deleteStoredCart, setStoredCart, clearAllOrders } from 'lib/mock/storage';
 import { NextRequest, NextResponse } from 'next/server';
 import { Cart } from 'lib/shopify/types';
 
@@ -32,6 +32,9 @@ export async function POST(request: NextRequest) {
     if (oldCartId) {
       deleteStoredCart(oldCartId);
     }
+
+    // Clear all orders for clean benchmark state
+    clearAllOrders();
 
     // Pattern B: Server mints fresh session ID
     const newSessionId = randomUUID();
