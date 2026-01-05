@@ -1,8 +1,9 @@
 export const runtime = 'nodejs'; // CRITICAL: Ensures consistent server instance
 
 import { randomUUID } from 'crypto';
-import { deleteStoredCart } from 'lib/mock/storage';
+import { deleteStoredCart, setStoredCart } from 'lib/mock/storage';
 import { NextRequest, NextResponse } from 'next/server';
+import { Cart } from 'lib/shopify/types';
 
 const BENCHMARK_SECRET = process.env.BENCHMARK_SECRET;
 
@@ -34,6 +35,21 @@ export async function POST(request: NextRequest) {
 
     // Pattern B: Server mints fresh session ID
     const newSessionId = randomUUID();
+
+    // CRITICAL: Create empty cart in storage with this ID
+    // This ensures addToCart can find and update it (cookies().set is read-only in server actions)
+    const emptyCart: Cart = {
+      id: newSessionId,
+      checkoutUrl: '/checkout',
+      cost: {
+        subtotalAmount: { amount: '0.00', currencyCode: 'USD' },
+        totalAmount: { amount: '0.00', currencyCode: 'USD' },
+        totalTaxAmount: { amount: '0.00', currencyCode: 'USD' }
+      },
+      lines: [],
+      totalQuantity: 0
+    };
+    setStoredCart(newSessionId, emptyCart);
 
     const response = NextResponse.json({
       status: 'reset_complete',
