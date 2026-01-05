@@ -85,7 +85,7 @@ export default function MobileMenu({ menu }: { menu: Menu[] }) {
                         onClick={closeMobileMenu}
                         className="font-serif font-bold text-blue-700 hover:text-blue-900"
                       >
-                        [📖 API Documentation]
+                        [Agent Interface]
                       </Link>
                     </li>
                     {menu.map((item: Menu) => (

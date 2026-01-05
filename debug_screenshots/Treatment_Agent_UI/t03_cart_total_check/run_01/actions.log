@@ -1,0 +1,12 @@
+Step 01: screenshot - {'action': 'screenshot'}
+Step 02: left_click - at (904, 687)
+Step 03: scroll - delta_y=0
+Step 04: left_click - at (344, 51)
+Step 05: left_click - at (361, 172)
+Step 06: left_click - at (264, 51)
+Step 07: left_click - at (468, 51)
+Step 08: left_click - at (325, 203)
+Step 09: scroll - delta_y=0
+Step 10: left_click - at (620, 51)
+Step 11: type - 'Acme Cup...'
+Step 12: left_click - at (742, 51)

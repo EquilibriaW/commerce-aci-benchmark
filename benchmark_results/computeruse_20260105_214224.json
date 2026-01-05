@@ -1,0 +1,180 @@
+{
+  "run_id": "20260105_214224",
+  "timestamp": "2026-01-05T21:42:24.269375",
+  "model": "claude-sonnet-4-5-20250929",
+  "beta": "computer-use-2025-01-24",
+  "config": {
+    "display_width": 1280,
+    "display_height": 800,
+    "max_iterations": 12,
+    "runs_per_task": 1,
+    "treatment_url": "http://localhost:3000",
+    "baseline_url": "http://localhost:3001"
+  },
+  "results": [
+    {
+      "success": false,
+      "steps": 7,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "action_log": [
+        "Step 01: screenshot - {'action': 'screenshot'}",
+        "Step 02: left_click - at (904, 687)",
+        "Step 03: left_click - at (151, 37)",
+        "Step 04: left_click - at (322, 226)",
+        "Step 05: left_click - at (926, 316)",
+        "Step 06: left_click - at (1028, 433)",
+        "Step 07: TASK_COMPLETE - Agent declared task complete"
+      ],
+      "condition": "Control (Human UI)",
+      "task": "t01_find_add_simple",
+      "run": 1
+    },
+    {
+      "success": false,
+      "steps": 7,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "action_log": [
+        "Step 01: screenshot - {'action': 'screenshot'}",
+        "Step 02: left_click - at (904, 687)",
+        "Step 03: left_click - at (151, 37)",
+        "Step 04: left_click - at (322, 226)",
+        "Step 05: left_click - at (985, 316)",
+        "Step 06: left_click - at (1028, 433)",
+        "Step 07: TASK_COMPLETE - Agent declared task complete"
+      ],
+      "condition": "Control (Human UI)",
+      "task": "t02_variant_size_l",
+      "run": 1
+    },
+    {
+      "success": false,
+      "steps": 12,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "action_log": [
+        "Step 01: screenshot - {'action': 'screenshot'}",
+        "Step 02: left_click - at (903, 687)",
+        "Step 03: left_click - at (151, 37)",
+        "Step 04: left_click - at (639, 226)",
+        "Step 05: left_click - at (1028, 336)",
+        "Step 06: left_click - at (1229, 150)",
+        "Step 07: left_click - at (1234, 45)",
+        "Step 08: left_click - at (151, 37)",
+        "Step 09: left_click - at (956, 226)",
+        "Step 10: scroll - delta_y=0",
+        "Step 11: left_click - at (1028, 336)",
+        "Step 12: TASK_COMPLETE - Agent declared task complete"
+      ],
+      "condition": "Control (Human UI)",
+      "task": "t03_cart_total_check",
+      "run": 1
+    },
+    {
+      "success": false,
+      "steps": 10,
+      "entered_agent_view": true,
+      "agent_actions": 0,
+      "action_log": [
+        "Step 01: screenshot - {'action': 'screenshot'}",
+        "Step 02: left_click - at (904, 687)",
+        "Step 03: scroll - delta_y=0",
+        "Step 04: left_click - at (344, 51)",
+        "Step 05: left_click - at (468, 51)",
+        "Step 06: left_click - at (294, 148)",
+        "Step 07: left_click - at (496, 167)",
+        "Step 08: left_click - at (840, 392)",
+        "Step 09: left_click - at (855, 527)",
+        "Step 10: TASK_COMPLETE - Agent declared task complete"
+      ],
+      "condition": "Treatment (Agent UI)",
+      "task": "t01_find_add_simple",
+      "run": 1
+    },
+    {
+      "success": false,
+      "steps": 12,
+      "entered_agent_view": true,
+      "agent_actions": 0,
+      "action_log": [
+        "Step 01: screenshot - {'action': 'screenshot'}",
+        "Step 02: left_click - at (904, 687)",
+        "Step 03: scroll - delta_y=0",
+        "Step 04: left_click - at (344, 51)",
+        "Step 05: left_click - at (264, 51)",
+        "Step 06: left_click - at (625, 51)",
+        "Step 07: type - 'Black T-Shirt...'",
+        "Step 08: left_click - at (742, 51)",
+        "Step 09: key - ''",
+        "Step 10: left_click - at (468, 51)",
+        "Step 11: left_click - at (294, 148)",
+        "Step 12: left_click - at (496, 167)"
+      ],
+      "condition": "Treatment (Agent UI)",
+      "task": "t02_variant_size_l",
+      "run": 1
+    },
+    {
+      "success": false,
+      "steps": 12,
+      "entered_agent_view": true,
+      "agent_actions": 0,
+      "action_log": [
+        "Step 01: screenshot - {'action': 'screenshot'}",
+        "Step 02: left_click - at (904, 687)",
+        "Step 03: scroll - delta_y=0",
+        "Step 04: left_click - at (344, 51)",
+        "Step 05: left_click - at (361, 172)",
+        "Step 06: left_click - at (264, 51)",
+        "Step 07: left_click - at (468, 51)",
+        "Step 08: left_click - at (325, 203)",
+        "Step 09: scroll - delta_y=0",
+        "Step 10: left_click - at (620, 51)",
+        "Step 11: type - 'Acme Cup...'",
+        "Step 12: left_click - at (742, 51)"
+      ],
+      "condition": "Treatment (Agent UI)",
+      "task": "t03_cart_total_check",
+      "run": 1
+    },
+    {
+      "success": false,
+      "steps": 7,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "action_log": [
+        "Step 01: screenshot - {'action': 'screenshot'}",
+        "Step 02: left_click - at (903, 687)",
+        "Step 03: left_click - at (151, 37)",
+        "Step 04: left_click - at (322, 226)",
+        "Step 05: left_click - at (926, 316)",
+        "Step 06: left_click - at (1028, 433)",
+        "Step 07: TASK_COMPLETE - Agent declared task complete"
+      ],
+      "condition": "Discovery (Root)",
+      "task": "t01_find_add_simple",
+      "run": 1
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t02_variant_size_l",
+      "run": 1,
+      "error": "Failed to reset session: 500 <!DOCTYPE html><html><head><meta charSet=\"utf-8\" data-next-head=\"\"/><meta name=\"viewport\" content=\"width=device-width\" data-next-head=\"\"/><style data-next-hide-fouc=\"true\">body{display:none}</style><noscript data-next-hide-fouc=\"true\"><style>body{display:block}</style></noscript><noscript data-n-css=\"\"></noscript><script src=\"/_next/static/chunks/node_modules_next_dist_compiled_8ca6b690._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_dist_shared_lib_82dc2e9d._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_dist_client_d0aa886c._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_dist_b0a279d5._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_app_72f3d36f.js\" defer=\"\"></script><script src=\"/_next/static/chunks/%5Bnext%5D_entry_page-loader_ts_742e4b53._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_react-dom_4411d9bd._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_e1b9f01a._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/%5Broot-of-the-server%5D__45f039c3._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/pages__app_2da965e7._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/turbopack-pages__app_446a8036._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_dist_shared_lib_cf5b50a6._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_dist_19fd0646._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_error_1cfbb379.js\" defer=\"\"></script><script src=\"/_next/static/chunks/%5Bnext%5D_entry_page-loader_ts_43b523b5._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/%5Broot-of-the-server%5D__092393de._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/pages__error_2da965e7._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/turbopack-pages__error_94aa4865._.js\" defer=\"\"></script><script src=\"/_next/static/development/_ssgManifest.js\" defer=\"\"></script><script src=\"/_next/static/development/_buildManifest.js\" defer=\"\"></script><noscript id=\"__next_css__DO_NOT_USE__\"></noscript></head><body><div id=\"__next\"></div><script id=\"__NEXT_DATA__\" type=\"application/json\">{\"props\":{\"pageProps\":{\"statusCode\":500,\"hostname\":\"localhost\"}},\"page\":\"/_error\",\"query\":{},\"buildId\":\"development\",\"isFallback\":false,\"err\":{\"name\":\"Error\",\"source\":\"server\",\"message\":\"./app/agent/reset/route.ts:1:14\\nEcmascript file had an error\\n\\u003e 1 | export const runtime = 'nodejs'; // CRITICAL: Ensures consistent server instance\\n    |              ^^^^^^^\\n  2 |\\n  3 | import { randomUUID } from 'crypto';\\n  4 | import { deleteStoredCart } from 'lib/mock/storage';\\n\\nRoute segment config \\\"runtime\\\" is not compatible with `nextConfig.experimental.useCache`. Please remove it.\\n\\n\",\"stack\":\"Error: ./app/agent/reset/route.ts:1:14\\nEcmascript file had an error\\n\\u001b[0m\\u001b[31m\\u001b[1m\\u003e\\u001b[22m\\u001b[39m\\u001b[90m 1 |\\u001b[39m \\u001b[36mexport\\u001b[39m \\u001b[36mconst\\u001b[39m runtime \\u001b[33m=\\u001b[39m \\u001b[32m'nodejs'\\u001b[39m\\u001b[33m;\\u001b[39m \\u001b[90m// CRITICAL: Ensures consistent server instance\\u001b[39m\\n \\u001b[90m   |\\u001b[39m              \\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\n \\u001b[90m 2 |\\u001b[39m\\n \\u001b[90m 3 |\\u001b[39m \\u001b[36mimport\\u001b[39m { randomUUID } \\u001b[36mfrom\\u001b[39m \\u001b[32m'crypto'\\u001b[39m\\u001b[33m;\\u001b[39m\\n \\u001b[90m 4 |\\u001b[39m \\u001b[36mimport\\u001b[39m { deleteStoredCart } \\u001b[36mfrom\\u001b[39m \\u001b[32m'lib/mock/storage'\\u001b[39m\\u001b[33m;\\u001b[39m\\u001b[0m\\n\\nRoute segment config \\\"runtime\\\" is not compatible with `nextConfig.experimental.useCache`. Please remove it.\\n\\n\\n    at Object.getCompilationErrors (/Users/alex/Agent_ad_experiment/node_modules/next/dist/server/dev/hot-reloader-turbopack.js:951:59)\\n    at DevBundlerService.getCompilationError (/Users/alex/Agent_ad_experiment/node_modules/next/dist/server/lib/dev-bundler-service.js:39:55)\\n    at DevServer.getCompilationError (/Users/alex/Agent_ad_experiment/node_modules/next/dist/server/dev/next-dev-server.js:672:42)\\n    at DevServer.findPageComponents (/Users/alex/Agent_ad_experiment/node_modules/next/dist/server/dev/next-dev-server.js:642:43)\\n    at async DevServer.renderErrorToResponseImpl (/Users/alex/Agent_ad_experiment/node_modules/next/dist/server/base-server.js:1704:26)\"},\"gip\":true,\"scriptLoader\":[]}</script></body></html>"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t03_cart_total_check",
+      "run": 1,
+      "error": "Failed to reset session: 500 <!DOCTYPE html><html><head><meta charSet=\"utf-8\" data-next-head=\"\"/><meta name=\"viewport\" content=\"width=device-width\" data-next-head=\"\"/><style data-next-hide-fouc=\"true\">body{display:none}</style><noscript data-next-hide-fouc=\"true\"><style>body{display:block}</style></noscript><noscript data-n-css=\"\"></noscript><script src=\"/_next/static/chunks/node_modules_next_dist_compiled_8ca6b690._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_dist_shared_lib_82dc2e9d._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_dist_client_d0aa886c._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_dist_b0a279d5._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_app_72f3d36f.js\" defer=\"\"></script><script src=\"/_next/static/chunks/%5Bnext%5D_entry_page-loader_ts_742e4b53._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_react-dom_4411d9bd._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_e1b9f01a._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/%5Broot-of-the-server%5D__45f039c3._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/pages__app_2da965e7._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/turbopack-pages__app_446a8036._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_dist_shared_lib_cf5b50a6._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_dist_19fd0646._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/node_modules_next_error_1cfbb379.js\" defer=\"\"></script><script src=\"/_next/static/chunks/%5Bnext%5D_entry_page-loader_ts_43b523b5._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/%5Broot-of-the-server%5D__092393de._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/pages__error_2da965e7._.js\" defer=\"\"></script><script src=\"/_next/static/chunks/turbopack-pages__error_94aa4865._.js\" defer=\"\"></script><script src=\"/_next/static/development/_ssgManifest.js\" defer=\"\"></script><script src=\"/_next/static/development/_buildManifest.js\" defer=\"\"></script><noscript id=\"__next_css__DO_NOT_USE__\"></noscript></head><body><div id=\"__next\"></div><script id=\"__NEXT_DATA__\" type=\"application/json\">{\"props\":{\"pageProps\":{\"statusCode\":500,\"hostname\":\"localhost\"}},\"page\":\"/_error\",\"query\":{},\"buildId\":\"development\",\"isFallback\":false,\"err\":{\"name\":\"Error\",\"source\":\"server\",\"message\":\"./app/agent/reset/route.ts:1:14\\nEcmascript file had an error\\n\\u003e 1 | export const runtime = 'nodejs'; // CRITICAL: Ensures consistent server instance\\n    |              ^^^^^^^\\n  2 |\\n  3 | import { randomUUID } from 'crypto';\\n  4 | import { deleteStoredCart } from 'lib/mock/storage';\\n\\nRoute segment config \\\"runtime\\\" is not compatible with `nextConfig.experimental.useCache`. Please remove it.\\n\\n\",\"stack\":\"Error: ./app/agent/reset/route.ts:1:14\\nEcmascript file had an error\\n\\u001b[0m\\u001b[31m\\u001b[1m\\u003e\\u001b[22m\\u001b[39m\\u001b[90m 1 |\\u001b[39m \\u001b[36mexport\\u001b[39m \\u001b[36mconst\\u001b[39m runtime \\u001b[33m=\\u001b[39m \\u001b[32m'nodejs'\\u001b[39m\\u001b[33m;\\u001b[39m \\u001b[90m// CRITICAL: Ensures consistent server instance\\u001b[39m\\n \\u001b[90m   |\\u001b[39m              \\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\u001b[31m\\u001b[1m^\\u001b[22m\\u001b[39m\\n \\u001b[90m 2 |\\u001b[39m\\n \\u001b[90m 3 |\\u001b[39m \\u001b[36mimport\\u001b[39m { randomUUID } \\u001b[36mfrom\\u001b[39m \\u001b[32m'crypto'\\u001b[39m\\u001b[33m;\\u001b[39m\\n \\u001b[90m 4 |\\u001b[39m \\u001b[36mimport\\u001b[39m { deleteStoredCart } \\u001b[36mfrom\\u001b[39m \\u001b[32m'lib/mock/storage'\\u001b[39m\\u001b[33m;\\u001b[39m\\u001b[0m\\n\\nRoute segment config \\\"runtime\\\" is not compatible with `nextConfig.experimental.useCache`. Please remove it.\\n\\n\\n    at Object.getCompilationErrors (/Users/alex/Agent_ad_experiment/node_modules/next/dist/server/dev/hot-reloader-turbopack.js:951:59)\\n    at DevBundlerService.getCompilationError (/Users/alex/Agent_ad_experiment/node_modules/next/dist/server/lib/dev-bundler-service.js:39:55)\\n    at DevServer.getCompilationError (/Users/alex/Agent_ad_experiment/node_modules/next/dist/server/dev/next-dev-server.js:672:42)\\n    at DevServer.findPageComponents (/Users/alex/Agent_ad_experiment/node_modules/next/dist/server/dev/next-dev-server.js:642:43)\\n    at async DevServer.renderErrorToResponseImpl (/Users/alex/Agent_ad_experiment/node_modules/next/dist/server/base-server.js:1704:26)\"},\"gip\":true,\"scriptLoader\":[]}</script></body></html>"
+    }
+  ]
+}

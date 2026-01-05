@@ -1,0 +1,106 @@
+{
+  "run_id": "20260105_205758",
+  "timestamp": "2026-01-05T20:57:58.527623",
+  "model": "claude-sonnet-4-5-20250514",
+  "beta": "computer-use-2025-01-24",
+  "config": {
+    "display_width": 1280,
+    "display_height": 800,
+    "max_iterations": 12,
+    "runs_per_task": 1,
+    "treatment_url": "http://localhost:3000",
+    "baseline_url": "http://localhost:3001"
+  },
+  "results": [
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t01_find_add_simple",
+      "run": 1,
+      "error": "Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-sonnet-4-5-20250514'}, 'request_id': 'req_011CWpGZf5Atd74BG2Ac4MFP'}"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t02_variant_size_l",
+      "run": 1,
+      "error": "Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-sonnet-4-5-20250514'}, 'request_id': 'req_011CWpGa2Ppjn6vhkCAgUM79'}"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t03_cart_total_check",
+      "run": 1,
+      "error": "Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-sonnet-4-5-20250514'}, 'request_id': 'req_011CWpGaKxzya3Dh98ZayBR2'}"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment (Agent UI)",
+      "task": "t01_find_add_simple",
+      "run": 1,
+      "error": "Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-sonnet-4-5-20250514'}, 'request_id': 'req_011CWpGai24NouZq9YqDtkfg'}"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment (Agent UI)",
+      "task": "t02_variant_size_l",
+      "run": 1,
+      "error": "Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-sonnet-4-5-20250514'}, 'request_id': 'req_011CWpGb3ybzrdXER9Q9Dz36'}"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment (Agent UI)",
+      "task": "t03_cart_total_check",
+      "run": 1,
+      "error": "Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-sonnet-4-5-20250514'}, 'request_id': 'req_011CWpGbQXNftDoGLVBZXkc2'}"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t01_find_add_simple",
+      "run": 1,
+      "error": "Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-sonnet-4-5-20250514'}, 'request_id': 'req_011CWpGbkPiAMLLXBMfdPkje'}"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t02_variant_size_l",
+      "run": 1,
+      "error": "Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-sonnet-4-5-20250514'}, 'request_id': 'req_011CWpGc2Jg5pYC8FjdzLvnB'}"
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery (Root)",
+      "task": "t03_cart_total_check",
+      "run": 1,
+      "error": "Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-sonnet-4-5-20250514'}, 'request_id': 'req_011CWpGciTQJS8idp4oQk4vG'}"
+    }
+  ]
+}

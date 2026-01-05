@@ -1,0 +1,12 @@
+Step 01: screenshot - {'action': 'screenshot'}
+Step 02: left_click - at (904, 687)
+Step 03: scroll - delta_y=0
+Step 04: left_click - at (344, 51)
+Step 05: left_click - at (264, 51)
+Step 06: left_click - at (625, 51)
+Step 07: type - 'Black T-Shirt...'
+Step 08: left_click - at (742, 51)
+Step 09: key - ''
+Step 10: left_click - at (468, 51)
+Step 11: left_click - at (294, 148)
+Step 12: left_click - at (496, 167)
