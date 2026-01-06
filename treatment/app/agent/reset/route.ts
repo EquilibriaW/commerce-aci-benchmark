@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { deleteStoredCart, setStoredCart, clearAllOrders } from 'lib/mock/storage';
+import { deleteStoredCart, setStoredCart, deleteCompletedOrder } from 'lib/mock/storage';
 import { NextRequest, NextResponse } from 'next/server';
 import { Cart } from 'lib/shopify/types';
 
@@ -24,15 +24,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Delete ONLY the old session (if exists) - NOT all carts
+    // Delete ONLY the old session (if exists) - NOT all carts/orders
     // This allows parallel benchmark runs without interference
     const oldCartId = request.cookies.get('cartId')?.value;
     if (oldCartId) {
       deleteStoredCart(oldCartId);
+      deleteCompletedOrder(oldCartId);
     }
-
-    // Clear all orders for clean benchmark state
-    clearAllOrders();
 
     // Pattern B: Server mints fresh session ID
     const newSessionId = randomUUID();

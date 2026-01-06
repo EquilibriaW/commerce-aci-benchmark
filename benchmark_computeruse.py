@@ -19,6 +19,7 @@ import os
 import sys
 import json
 import statistics
+import time
 from datetime import datetime
 
 # Ensure UTF-8 output
@@ -126,6 +127,39 @@ TASKS = [
             has_completed_order(s) and
             get_order_total(s) == 8000
         )
+    },
+    {
+        "id": "t04_quantity_adjust",
+        "instruction": "Add 2 acme cups to cart, then change the quantity to 1, and checkout",
+        "verifier": lambda s: (
+            has_completed_order(s) and
+            any(i['slug'] == 'acme-cup' and i['quantity'] == 1
+                for i in get_order_items(s)) and
+            get_order_total(s) == 1500  # 1 cup at $15
+        )
+    },
+    {
+        "id": "t05_remove_then_buy_variant",
+        "instruction": "Add a hoodie to cart, remove it, then buy a medium black T-shirt instead",
+        "verifier": lambda s: (
+            has_completed_order(s) and
+            any(i['slug'] == 'black-t-shirt' and i.get('variant') == 'M'
+                for i in get_order_items(s)) and
+            not any(i['slug'] == 'hoodie' for i in get_order_items(s)) and
+            get_order_total(s) == 2000  # 1 M t-shirt at $20
+        )
+    },
+    {
+        "id": "t06_overbuy_then_fix",
+        "instruction": "Add 2 hoodies to cart. Actually, I only want 1 hoodie and 2 cups. Fix my cart and checkout.",
+        "verifier": lambda s: (
+            has_completed_order(s) and
+            any(i['slug'] == 'hoodie' and i['quantity'] == 1
+                for i in get_order_items(s)) and
+            any(i['slug'] == 'acme-cup' and i['quantity'] == 2
+                for i in get_order_items(s)) and
+            get_order_total(s) == 8000  # 1 hoodie ($50) + 2 cups ($30)
+        )
     }
 ]
 
@@ -133,13 +167,22 @@ TASKS = [
 class ComputerUseAgent:
     """Agent that uses Claude's computer use capability with screenshots."""
 
+    # UI actions that count for metrics (exclude screenshot/wait/mouse_move)
+    UI_ACTIONS = {'left_click', 'right_click', 'double_click', 'triple_click',
+                  'left_click_drag', 'type', 'key'}
+    # Max conversation cycles to keep (preserve initial prompt, truncate older cycles)
+    MAX_HISTORY_CYCLES = 5
+
     def __init__(self, page: Page, api_key: str, debug_dir: Optional[Path] = None):
         self.page = page
         self.client = Anthropic(api_key=api_key)
         self.conversation_history = []
+        self.initial_prompt = None  # Store the initial user prompt (preserved across truncation)
         self.entered_agent_view = False
         self.agent_action_requests = 0
         self.step_count = 0
+        self.model_calls = 0  # Number of LLM API calls
+        self.ui_actions = 0   # Number of real UI actions (clicks/drag/type/key)
         self.debug_dir = debug_dir
         self.action_log = []
 
@@ -212,6 +255,47 @@ class ComputerUseAgent:
                 return resp.json()
             return {}
 
+    def _truncate_history(self):
+        """Truncate conversation history while preserving initial prompt.
+
+        Keeps the initial user message (with task instruction) and the last
+        MAX_HISTORY_CYCLES complete interaction cycles. Only truncates whole
+        assistant+user pairs to avoid breaking tool_use/tool_result pairings.
+        """
+        if len(self.conversation_history) <= 1:
+            return
+
+        messages_after_initial = self.conversation_history[1:]
+
+        # We want to keep at most MAX_HISTORY_CYCLES * 2 messages after initial
+        max_messages = self.MAX_HISTORY_CYCLES * 2
+
+        if len(messages_after_initial) <= max_messages:
+            return
+
+        # Find how many to remove (must be even to keep assistant+user pairs intact)
+        to_remove = len(messages_after_initial) - max_messages
+        to_remove = (to_remove // 2) * 2  # Round down to even
+
+        if to_remove > 0:
+            remaining = messages_after_initial[to_remove:]
+
+            # Safety check: ensure we don't start with a user message containing tool_result
+            # (which would be orphaned without the preceding assistant tool_use)
+            while remaining and remaining[0].get("role") == "user":
+                content = remaining[0].get("content", [])
+                has_tool_result = any(
+                    isinstance(c, dict) and c.get("type") == "tool_result"
+                    for c in (content if isinstance(content, list) else [])
+                )
+                if has_tool_result:
+                    # Remove this orphaned tool_result message
+                    remaining = remaining[1:]
+                else:
+                    break
+
+            self.conversation_history = [self.conversation_history[0]] + remaining
+
     async def run_step(self, instruction: str) -> tuple[str, bool]:
         """
         Run one step of the agent loop.
@@ -223,27 +307,34 @@ class ComputerUseAgent:
         if "/agent" in self.page.url:
             self.entered_agent_view = True
 
-        # Take screenshot
-        screenshot_b64, screenshot_bytes = await self.take_screenshot()
+        # Check if last message was a tool_result (which already includes screenshot)
+        # In that case, don't add another user message - just call the API
+        last_msg = self.conversation_history[-1] if self.conversation_history else None
+        last_was_tool_result = False
+        if last_msg and last_msg.get("role") == "user":
+            content = last_msg.get("content", [])
+            if isinstance(content, list) and content:
+                last_was_tool_result = any(
+                    isinstance(c, dict) and c.get("type") == "tool_result"
+                    for c in content
+                )
 
-        # Save debug screenshot
-        self._save_debug_screenshot(screenshot_bytes, self.step_count)
+        if not last_was_tool_result:
+            # Take screenshot
+            screenshot_b64, screenshot_bytes = await self.take_screenshot()
 
-        # Build messages with prompt caching
-        if not self.conversation_history:
-            # First message - include cached system prompt + task instruction
-            self.conversation_history = [
-                {
+            # Save debug screenshot
+            self._save_debug_screenshot(screenshot_bytes, self.step_count)
+
+            # Build messages - use system parameter for system prompt
+            if not self.conversation_history:
+                # First message - task instruction + screenshot
+                self.initial_prompt = {
                     "role": "user",
                     "content": [
                         {
                             "type": "text",
-                            "text": SYSTEM_PROMPT,
-                            "cache_control": {"type": "ephemeral"}
-                        },
-                        {
-                            "type": "text",
-                            "text": f"\n\nTASK: {instruction}\n\nHere is the current state of the webpage:"
+                            "text": f"TASK: {instruction}\n\nHere is the current state of the webpage:"
                         },
                         {
                             "type": "image",
@@ -255,34 +346,38 @@ class ComputerUseAgent:
                         }
                     ]
                 }
-            ]
-        else:
-            # Follow-up message with new screenshot
-            self.conversation_history.append({
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "Here is the current state of the page after your last action. Continue with the task or say TASK_COMPLETE if done."
-                    },
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/png",
-                            "data": screenshot_b64
+                self.conversation_history = [self.initial_prompt]
+            else:
+                # Follow-up message with new screenshot (only if last wasn't tool_result)
+                self.conversation_history.append({
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Here is the current state of the page after your last action. Continue with the task or say TASK_COMPLETE if done."
+                        },
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": screenshot_b64
+                            }
                         }
-                    }
-                ]
-            })
+                    ]
+                })
+                # Truncate history to prevent context overflow
+                self._truncate_history()
 
-        # Call Claude with computer use - Sonnet 4.5 with simple rate limit retry
+        # Call Claude with computer use - use system= parameter
         response = None
         while response is None:
             try:
+                self.model_calls += 1
                 response = self.client.messages.create(
                     model="claude-sonnet-4-5-20250929",
                     max_tokens=4096,
+                    system=SYSTEM_PROMPT,
                     extra_headers={"anthropic-beta": "computer-use-2025-01-24"},
                     tools=[
                         {
@@ -306,8 +401,9 @@ class ComputerUseAgent:
                 else:
                     raise
 
-        # Process response
+        # Process response - handle multiple tool_use blocks
         assistant_content = []
+        tool_uses = []
         action_taken = "none"
         is_done = False
 
@@ -326,11 +422,27 @@ class ComputerUseAgent:
                     "name": block.name,
                     "input": block.input
                 })
+                tool_uses.append(block)
 
+        # Add assistant message first (contains all tool_use blocks)
+        self.conversation_history.append({
+            "role": "assistant",
+            "content": assistant_content
+        })
+
+        # Execute all tool_uses sequentially and collect results
+        if tool_uses:
+            tool_results = []
+            for block in tool_uses:
                 # Log the action
                 action_type = block.input.get('action', 'unknown')
                 coord = block.input.get('coordinate', [0, 0])
                 text = block.input.get('text', '')
+
+                # Count UI actions
+                if action_type in self.UI_ACTIONS:
+                    self.ui_actions += 1
+
                 if action_type in ['left_click', 'right_click', 'double_click']:
                     self._log_action(self.step_count, action_type, f"at ({coord[0]}, {coord[1]})")
                 elif action_type == 'type':
@@ -349,28 +461,17 @@ class ComputerUseAgent:
                 tool_result = await self._execute_computer_action(block.input)
                 action_taken = action_type
 
-                # Add assistant message and tool result
-                self.conversation_history.append({
-                    "role": "assistant",
-                    "content": assistant_content
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": tool_result
                 })
-                self.conversation_history.append({
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": tool_result
-                        }
-                    ]
-                })
-                return action_taken, is_done
 
-        # No tool use - just text response
-        self.conversation_history.append({
-            "role": "assistant",
-            "content": assistant_content
-        })
+            # Add all tool results in a single user message
+            self.conversation_history.append({
+                "role": "user",
+                "content": tool_results
+            })
 
         return action_taken, is_done
 
@@ -509,12 +610,18 @@ async def run_trial(task: dict, target_url: str, api_url: str, condition_name: s
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY environment variable is required")
 
+    # Track if we're starting on /agent (forced adoption - show N/A for adoption metric)
+    forced_agent_start = "/agent" in target_url
+
     # Set up debug directory
     debug_dir = None
     if DEBUG_SCREENSHOTS:
         # Sanitize condition name for directory
         safe_condition = condition_name.replace(" ", "_").replace("(", "").replace(")", "")
         debug_dir = DEBUG_DIR / safe_condition / task["id"] / f"run_{run_num:02d}"
+
+    # Start wall time tracking
+    start_time = time.perf_counter()
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -561,6 +668,9 @@ async def run_trial(task: dict, target_url: str, api_url: str, condition_name: s
             # Small delay between actions
             await asyncio.sleep(0.3)
 
+        # End wall time tracking
+        wall_time_seconds = time.perf_counter() - start_time
+
         # Save action log
         if debug_dir:
             log_path = debug_dir / "actions.log"
@@ -573,6 +683,10 @@ async def run_trial(task: dict, target_url: str, api_url: str, condition_name: s
             "steps": steps,
             "entered_agent_view": agent.entered_agent_view,
             "agent_actions": agent.agent_action_requests,
+            "model_calls": agent.model_calls,
+            "ui_actions": agent.ui_actions,
+            "wall_time_seconds": round(wall_time_seconds, 2),
+            "forced_agent_start": forced_agent_start,
             "action_log": agent.action_log
         }
 
@@ -655,6 +769,10 @@ async def main():
                         "steps": 0,
                         "entered_agent_view": False,
                         "agent_actions": 0,
+                        "model_calls": 0,
+                        "ui_actions": 0,
+                        "wall_time_seconds": 0,
+                        "forced_agent_start": "/agent" in cond["target_url"],
                         "condition": cond["name"],
                         "task": task["id"],
                         "run": run_num + 1,
@@ -667,6 +785,9 @@ async def main():
     table.add_column("Condition")
     table.add_column("Accuracy")
     table.add_column("Avg Steps")
+    table.add_column("Model Calls")
+    table.add_column("UI Actions")
+    table.add_column("Wall Time")
     table.add_column("Adoption %")
     table.add_column("Agent Actions")
 
@@ -680,16 +801,33 @@ async def main():
         acc = len(wins) / len(subset) * 100
         avg_steps = statistics.mean([r["steps"] for r in wins]) if wins else 0.0
 
-        adopters = [r for r in subset if r["entered_agent_view"] or r["agent_actions"] > 0]
-        adoption = (len(adopters) / len(subset)) * 100
+        # Calculate adoption - show "N/A" for forced /agent starts
+        # (adoption is only meaningful when starting from root)
+        forced_starts = [r for r in subset if r.get("forced_agent_start", False)]
+        if len(forced_starts) == len(subset):
+            adoption_str = "N/A"
+        else:
+            non_forced = [r for r in subset if not r.get("forced_agent_start", False)]
+            if non_forced:
+                adopters = [r for r in non_forced if r["entered_agent_view"] or r["agent_actions"] > 0]
+                adoption = (len(adopters) / len(non_forced)) * 100
+                adoption_str = f"{adoption:.0f}%"
+            else:
+                adoption_str = "N/A"
 
         avg_actions = statistics.mean([r["agent_actions"] for r in subset])
+        avg_model_calls = statistics.mean([r.get("model_calls", 0) for r in subset])
+        avg_ui_actions = statistics.mean([r.get("ui_actions", 0) for r in subset])
+        avg_wall_time = statistics.mean([r.get("wall_time_seconds", 0) for r in subset])
 
         table.add_row(
             name,
             f"{acc:.0f}%",
             f"{avg_steps:.1f}",
-            f"{adoption:.0f}%",
+            f"{avg_model_calls:.1f}",
+            f"{avg_ui_actions:.1f}",
+            f"{avg_wall_time:.1f}s",
+            adoption_str,
             f"{avg_actions:.1f}"
         )
 

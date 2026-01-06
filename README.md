@@ -46,20 +46,27 @@ cd treatment-docs && npm install --legacy-peer-deps && cd ..
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 export BENCHMARK_SECRET="sk-bench-123"  # Optional, this is the default
+
+# Note: Welcome toast is disabled by default during benchmarking.
+# To enable: export NEXT_PUBLIC_SHOW_WELCOME_TOAST="1"
 ```
 
 ### Running the Benchmark
 
 **Terminal 1 - Start all servers:**
+
+> **Recommended**: Use production builds for stable benchmarking. Development servers may have slower response times and hot-reload artifacts.
+
 ```bash
-# Baseline (port 3001)
-cd baseline && npm run dev &
+# Build all variants first (production mode)
+cd baseline && pnpm build && pnpm start -p 3001 &
+cd treatment && pnpm build && pnpm start -p 3000 &
+cd treatment-docs && pnpm build && pnpm start -p 3002 &
 
-# Treatment 1 - Terminal UI (port 3000)
-cd treatment && npm run dev &
-
-# Treatment 2 - Documentation UI (port 3002)
-cd treatment-docs && npm run dev &
+# Alternative: Development mode (faster startup, less stable)
+# cd baseline && npm run dev &
+# cd treatment && npm run dev &
+# cd treatment-docs && npm run dev &
 ```
 
 **Terminal 2 - Run benchmark:**
@@ -75,7 +82,10 @@ The benchmark reports:
 |--------|-------------|
 | **Accuracy** | Task completion rate (%) |
 | **Avg Steps** | Average steps to complete successful tasks |
-| **Adoption %** | How often agent discovered/used agent routes |
+| **Model Calls** | Number of LLM API calls made |
+| **UI Actions** | Real UI actions (clicks, drags, typing, keypresses) |
+| **Wall Time** | Elapsed wall-clock time per trial |
+| **Adoption %** | How often agent discovered/used agent routes (N/A for forced `/agent` starts) |
 | **Agent Actions** | API calls to `/agent/actions/*` endpoints |
 
 Results are saved to `benchmark_results/` as JSON files. Debug screenshots are saved to `debug_screenshots/`.
@@ -111,25 +121,41 @@ TASKS = [
 
 ### Verifier Function
 
-The verifier receives the cart state and returns `True` if the task succeeded:
+The verifier receives the state from `/agent/state` and returns `True` if the task succeeded:
 
 ```python
-# State structure passed to verifier
+# State structure passed to verifier (from /agent/state endpoint)
 state = {
     "cart": {
+        "id": "cart_123",
         "items": [
             {
+                "id": "variant_id",
                 "slug": "black-t-shirt",
+                "title": "Black T-Shirt",
                 "variant": "M",
                 "quantity": 1,
-                "price_cents": 2000
+                "unit_price_cents": 2000,
+                "line_total_cents": 2000
             }
         ],
         "total_items": 1,
-        "total_price_cents": 2000
+        "total_price_cents": 2000,
+        "currency": "USD"
+    },
+    "last_order": {  # Present after checkout completed
+        "id": "order_123",
+        "customer": {"name": "John", "email": "john@example.com"},
+        "items": [...],
+        "total_items": 1,
+        "total_price_cents": 2000,
+        "currency": "USD",
+        "completed_at": "2025-01-06T12:00:00Z"
     }
 }
 ```
+
+> **Note**: Task verifiers check `last_order` (completed checkout) rather than `cart` to ensure agents complete the full checkout flow.
 
 ### Example Tasks
 
@@ -191,16 +217,28 @@ You can test any website by adding a new condition to the benchmark.
 
 Your site needs these API endpoints for the benchmark to verify results:
 
-#### GET `/agent/state` - Returns cart state
+#### GET `/agent/state` - Returns cart state and completed order
 ```json
 {
   "cart": {
+    "id": "cart_123",
     "items": [
-      {"slug": "product-handle", "variant": "M", "quantity": 1, "price_cents": 2000}
+      {
+        "id": "variant_id",
+        "slug": "product-handle",
+        "title": "Product Name",
+        "variant": "M",
+        "quantity": 1,
+        "unit_price_cents": 2000,
+        "line_total_cents": 2000
+      }
     ],
     "total_items": 1,
-    "total_price_cents": 2000
-  }
+    "total_price_cents": 2000,
+    "currency": "USD"
+  },
+  "last_order": null,
+  "timestamp": "2025-01-06T12:00:00Z"
 }
 ```
 

@@ -1,11 +1,13 @@
-import { getCart, getCompletedOrder } from 'lib/shopify';
+import { getCart, getLastCompletedOrder } from 'lib/shopify';
 import { NextRequest, NextResponse } from 'next/server';
 
 const BENCHMARK_SECRET = process.env.BENCHMARK_SECRET;
 
 // Robust string-to-cents conversion (avoids float precision issues)
 function toCents(amount: string): number {
-  const [dollars, cents = '00'] = amount.split('.');
+  const parts = amount.split('.');
+  const dollars = parts[0] || '0';
+  const cents = parts[1] || '00';
   return parseInt(dollars, 10) * 100 + parseInt(cents.padEnd(2, '0').slice(0, 2), 10);
 }
 
@@ -30,23 +32,27 @@ export async function GET(request: NextRequest) {
   try {
     const cart = await getCart();
 
-    // Get the cartId from cookies to look up any completed order
-    const cartIdCookie = request.cookies.get('cartId');
-    const cartId = cartIdCookie?.value;
-    const completedOrder = cartId ? getCompletedOrder(cartId) : undefined;
+    // Get the most recent completed order (doesn't depend on cookie)
+    const completedOrder = getLastCompletedOrder();
 
     const state = {
       cart: cart ? {
         id: cart.id,
-        items: cart.lines.map(line => ({
-          id: line.merchandise.id,
-          slug: line.merchandise.product.handle,
-          title: line.merchandise.product.title,
-          variant: line.merchandise.title,
-          quantity: line.quantity,
-          unit_price_cents: toCents(line.merchandise.price.amount),
-          line_total_cents: toCents(line.cost.totalAmount.amount)
-        })),
+        items: cart.lines.map(line => {
+          const lineTotalCents = toCents(line.cost.totalAmount.amount);
+          const unitPriceCents = line.merchandise.price?.amount
+            ? toCents(line.merchandise.price.amount)
+            : (line.quantity > 0 ? Math.round(lineTotalCents / line.quantity) : 0);
+          return {
+            id: line.merchandise.id,
+            slug: line.merchandise.product.handle,
+            title: line.merchandise.product.title,
+            variant: line.merchandise.title,
+            quantity: line.quantity,
+            unit_price_cents: unitPriceCents,
+            line_total_cents: lineTotalCents
+          };
+        }),
         total_items: cart.totalQuantity,
         total_price_cents: toCents(cart.cost.totalAmount.amount),
         currency: cart.cost.totalAmount.currencyCode

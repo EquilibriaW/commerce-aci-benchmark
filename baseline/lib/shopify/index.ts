@@ -8,11 +8,14 @@ export {
   clearAllCarts,
   clearAllOrders,
   createCart,
+  deleteCompletedOrder,
+  deleteStoredCart,
   getCart,
   getCollection,
   getCollectionProducts,
   getCollections,
   getCompletedOrder,
+  getLastCompletedOrder,
   getMenu,
   getPage,
   getPages,
@@ -22,6 +25,7 @@ export {
   removeFromCart,
   revalidate,
   saveCompletedOrder,
+  setStoredCart,
   updateCart
 } from '../mock';
 

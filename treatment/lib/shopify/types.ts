@@ -33,6 +33,7 @@ export type CartItem = {
       value: string;
     }[];
     product: CartProduct;
+    price?: Money;  // Optional for backward compatibility with existing stored carts
   };
 };
 

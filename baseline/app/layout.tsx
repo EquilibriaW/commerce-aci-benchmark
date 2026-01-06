@@ -38,7 +38,7 @@ export default async function RootLayout({
           <main>
             {children}
             <Toaster closeButton />
-            <WelcomeToast />
+            {process.env.NEXT_PUBLIC_SHOW_WELCOME_TOAST === '1' && <WelcomeToast />}
           </main>
         </CartProvider>
       </body>

@@ -141,3 +141,19 @@ export function getCompletedOrder(sessionId: string): CompletedOrder | undefined
 export function clearAllOrders(): void {
   writeOrderStorage({ orders: {}, lastUpdated: new Date().toISOString() });
 }
+
+export function deleteCompletedOrder(cartId: string): void {
+  const storage = readOrderStorage();
+  delete storage.orders[cartId];
+  writeOrderStorage(storage);
+}
+
+export function getLastCompletedOrder(): CompletedOrder | undefined {
+  const storage = readOrderStorage();
+  const orders = Object.values(storage.orders);
+  if (orders.length === 0) return undefined;
+  // Return the most recently completed order
+  return orders.sort((a, b) =>
+    new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime()
+  )[0];
+}

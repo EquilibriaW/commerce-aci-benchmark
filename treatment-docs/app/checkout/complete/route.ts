@@ -1,10 +1,18 @@
-import { getCart, clearAllCarts, saveCompletedOrder } from 'lib/shopify';
+import { getCart, saveCompletedOrder, setStoredCart } from 'lib/shopify';
+import { Cart } from 'lib/shopify/types';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+// GET requests should redirect to checkout page (not show blank)
+export async function GET() {
+  redirect('/checkout');
+}
+
 // Robust string-to-cents conversion (avoids float precision issues)
 function toCents(amount: string): number {
-  const [dollars, cents = '00'] = amount.split('.');
+  const parts = amount.split('.');
+  const dollars = parts[0] || '0';
+  const cents = parts[1] || '00';
   return parseInt(dollars, 10) * 100 + parseInt(cents.padEnd(2, '0').slice(0, 2), 10);
 }
 
@@ -38,15 +46,21 @@ export async function POST(request: Request) {
         name,
         email
       },
-      items: cart.lines.map(line => ({
-        id: line.merchandise.id,
-        slug: line.merchandise.product.handle,
-        title: line.merchandise.product.title,
-        variant: line.merchandise.title,
-        quantity: line.quantity,
-        unit_price_cents: toCents(line.merchandise.price.amount),
-        line_total_cents: toCents(line.cost.totalAmount.amount)
-      })),
+      items: cart.lines.map(line => {
+        const lineTotalCents = toCents(line.cost.totalAmount.amount);
+        const unitPriceCents = line.merchandise.price?.amount
+          ? toCents(line.merchandise.price.amount)
+          : (line.quantity > 0 ? Math.round(lineTotalCents / line.quantity) : 0);
+        return {
+          id: line.merchandise.id,
+          slug: line.merchandise.product.handle,
+          title: line.merchandise.product.title,
+          variant: line.merchandise.title,
+          quantity: line.quantity,
+          unit_price_cents: unitPriceCents,
+          line_total_cents: lineTotalCents
+        };
+      }),
       total_items: cart.totalQuantity,
       total_price_cents: toCents(cart.cost.totalAmount.amount),
       currency: cart.cost.totalAmount.currencyCode,
@@ -57,9 +71,21 @@ export async function POST(request: Request) {
     saveCompletedOrder(cartId, order);
   }
 
-  // Clear the cart after saving order
-  cookieStore.delete('cartId');
-  clearAllCarts();
+  // Reset cart to empty under same cartId (parallel-safe, keeps cookie)
+  if (cartId) {
+    const emptyCart: Cart = {
+      id: cartId,
+      checkoutUrl: '/checkout',
+      cost: {
+        subtotalAmount: { amount: '0.00', currencyCode: 'USD' },
+        totalAmount: { amount: '0.00', currencyCode: 'USD' },
+        totalTaxAmount: { amount: '0.00', currencyCode: 'USD' }
+      },
+      lines: [],
+      totalQuantity: 0
+    };
+    setStoredCart(cartId, emptyCart);
+  }
 
   // Redirect to confirmation page
   redirect('/checkout/confirmation');

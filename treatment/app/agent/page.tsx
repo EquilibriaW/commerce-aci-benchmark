@@ -42,9 +42,16 @@ export default async function AgentDashboard() {
 
       <h1>AGENT STORE</h1>
 
-      {/* CART - Compact summary */}
+      {/* CART - Compact summary with edit controls */}
       <div className="cart-section">
-        <strong>CART</strong> ({cartItems.length} items, ${cartTotal})
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span><strong>CART</strong> ({cartItems.length} items, ${cartTotal})</span>
+          {cartItems.length > 0 && (
+            <form action="/agent/actions/clear" method="POST" style={{ display: 'inline' }}>
+              <button type="submit" style={{ background: '#c00', fontSize: '10px', padding: '2px 6px' }}>CLEAR CART</button>
+            </form>
+          )}
+        </div>
         {cartItems.length === 0 ? (
           <span className="empty"> - Empty</span>
         ) : (
@@ -55,6 +62,7 @@ export default async function AgentDashboard() {
                 <th>Variant</th>
                 <th>Qty</th>
                 <th>Price</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -62,8 +70,21 @@ export default async function AgentDashboard() {
                 <tr key={item.id}>
                   <td>{item.merchandise.product.handle}</td>
                   <td>{item.merchandise.title}</td>
-                  <td>{item.quantity}</td>
+                  <td>
+                    <form action="/agent/actions/update" method="POST" className="inline-form">
+                      <input type="hidden" name="lineId" value={item.id || ''} />
+                      <input type="hidden" name="merchandiseId" value={item.merchandise.id} />
+                      <input type="number" name="quantity" defaultValue={item.quantity} min={1} max={99} style={{ width: '35px' }} />
+                      <button type="submit" style={{ fontSize: '10px', padding: '1px 4px' }}>UPDATE</button>
+                    </form>
+                  </td>
                   <td>${item.cost.totalAmount.amount}</td>
+                  <td>
+                    <form action="/agent/actions/remove" method="POST" style={{ display: 'inline' }}>
+                      <input type="hidden" name="lineId" value={item.id || ''} />
+                      <button type="submit" style={{ background: '#900', fontSize: '10px', padding: '1px 4px' }}>REMOVE</button>
+                    </form>
+                  </td>
                 </tr>
               ))}
             </tbody>
