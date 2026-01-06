@@ -178,10 +178,11 @@ class ComputerUseAgent:
         self.conversation_history = []
         self.initial_prompt = None  # Store the initial user prompt (preserved across truncation)
         self.entered_agent_view = False
+        self.first_agent_view_step = None  # Step when agent UI was first visited (adoption timing)
         self.agent_action_requests = 0
         self.step_count = 0
         self.model_calls = 0  # Number of LLM API calls
-        self.ui_actions = 0   # Number of real UI actions (clicks/drag/type/key)
+        self.ui_actions = 0   # Number of real UI actions (clicks/drag/type/key/scroll)
         self.debug_dir = debug_dir
         self.action_log = []
 
@@ -290,8 +291,10 @@ class ComputerUseAgent:
         """
         self.step_count += 1
 
-        # Check if we're in agent view
+        # Check if we're in agent view (track first adoption step)
         if "/agent" in self.page.url:
+            if not self.entered_agent_view:
+                self.first_agent_view_step = self.step_count
             self.entered_agent_view = True
 
         # Check if last message was a tool_result (which already includes screenshot)
@@ -692,6 +695,7 @@ async def run_trial(
             "success": success,
             "steps": steps,
             "entered_agent_view": agent.entered_agent_view,
+            "first_agent_view_step": agent.first_agent_view_step,
             "agent_actions": agent.agent_action_requests,
             "model_calls": agent.model_calls,
             "ui_actions": agent.ui_actions,
@@ -884,6 +888,7 @@ async def main():
                         "success": False,
                         "steps": 0,
                         "entered_agent_view": False,
+                        "first_agent_view_step": None,
                         "agent_actions": 0,
                         "model_calls": 0,
                         "ui_actions": 0,
@@ -913,14 +918,20 @@ async def main():
         forced_starts = [r for r in subset if r.get("forced_agent_start", False)]
         if len(forced_starts) == len(subset):
             adoption_str = "N/A"
+            avg_adoption_step = None
         else:
             non_forced = [r for r in subset if not r.get("forced_agent_start", False)]
             if non_forced:
                 adopters = [r for r in non_forced if r["entered_agent_view"] or r["agent_actions"] > 0]
                 adoption = (len(adopters) / len(non_forced)) * 100
                 adoption_str = f"{adoption:.0f}%"
+                # Calculate average step when adoption occurred
+                adoption_steps = [r.get("first_agent_view_step") for r in adopters
+                                  if r.get("first_agent_view_step") is not None]
+                avg_adoption_step = statistics.mean(adoption_steps) if adoption_steps else None
             else:
                 adoption_str = "N/A"
+                avg_adoption_step = None
 
         return {
             "n": len(subset),
@@ -930,6 +941,7 @@ async def main():
             "avg_ui_actions": statistics.mean([r.get("ui_actions", 0) for r in subset]),
             "avg_wall_time": statistics.mean([r.get("wall_time_seconds", 0) for r in subset]),
             "adoption": adoption_str,
+            "avg_adoption_step": avg_adoption_step,
             "avg_agent_actions": statistics.mean([r["agent_actions"] for r in subset])
         }
 
@@ -1012,6 +1024,7 @@ async def main():
     disc_table.add_column("N")
     disc_table.add_column("Accuracy")
     disc_table.add_column("Adoption")
+    disc_table.add_column("Adopt@Step")
 
     for disc in ["navbar", "hidden"]:
         # Only look at root starts (non-forced) for discoverability analysis
@@ -1021,11 +1034,13 @@ async def main():
                   and r.get("app") != "baseline"]
         m = compute_metrics(subset)
         if m:
+            adopt_step_str = f"{m['avg_adoption_step']:.1f}" if m['avg_adoption_step'] else "N/A"
             disc_table.add_row(
                 disc,
                 str(m['n']),
                 f"{m['accuracy']:.0f}%",
-                m['adoption']
+                m['adoption'],
+                adopt_step_str
             )
     console.print(disc_table)
 
