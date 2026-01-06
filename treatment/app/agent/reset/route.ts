@@ -66,6 +66,22 @@ export async function POST(request: NextRequest) {
       sameSite: 'lax'
     });
 
+    // Set experimental factor cookies from benchmark headers
+    const discoverability = request.headers.get('X-Benchmark-Discoverability') || 'navbar';
+    const capability = request.headers.get('X-Benchmark-Capability') || 'advantage';
+
+    response.cookies.set('bench_discoverability', discoverability, {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax'
+    });
+
+    response.cookies.set('bench_capability', capability, {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax'
+    });
+
     return response;
   } catch (error) {
     console.error('Reset endpoint error:', error);

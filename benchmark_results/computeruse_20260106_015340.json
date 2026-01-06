@@ -1,0 +1,185 @@
+{
+  "run_id": "20260106_015340",
+  "timestamp": "2026-01-06T01:53:40.914424",
+  "model": "claude-sonnet-4-5-20250929",
+  "beta": "computer-use-2025-01-24",
+  "config": {
+    "display_width": 1280,
+    "display_height": 800,
+    "max_iterations": 18,
+    "runs_per_task": 1,
+    "treatment_url": "http://localhost:3000",
+    "baseline_url": "http://localhost:3001"
+  },
+  "results": [
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t01_find_add_simple",
+      "run": 1,
+      "error": "Error code: 500"
+    },
+    {
+      "success": false,
+      "steps": 18,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "action_log": [
+        "Step 01: screenshot - {'action': 'screenshot'}",
+        "Step 02: left_click - at (903, 687)",
+        "Step 03: left_click - at (250, 37)",
+        "Step 04: left_click - at (322, 226)",
+        "Step 05: left_click - at (985, 316)",
+        "Step 06: left_click - at (1028, 433)",
+        "Step 07: left_click - at (1085, 749)",
+        "Step 08: scroll - down by 3",
+        "Step 09: left_click - at (640, 688)",
+        "Step 10: left_click - at (496, 623)",
+        "Step 11: key - ''",
+        "Step 12: triple_click - {'action': 'triple_click', 'coordinate': [496, 623",
+        "Step 13: type - 'customer@example.com...'",
+        "Step 14: left_click - at (783, 623)",
+        "Step 15: triple_click - {'action': 'triple_click', 'coordinate': [783, 623",
+        "Step 16: type - 'Alex Smith...'",
+        "Step 17: left_click - at (640, 688)",
+        "Step 18: wait - {'action': 'wait', 'duration': 3}"
+      ],
+      "condition": "Control (Human UI)",
+      "task": "t02_variant_size_l",
+      "run": 1
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Control (Human UI)",
+      "task": "t03_cart_total_check",
+      "run": 1,
+      "error": "Connection error."
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment 1 (Terminal UI)",
+      "task": "t01_find_add_simple",
+      "run": 1,
+      "error": "Connection error."
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment 1 (Terminal UI)",
+      "task": "t02_variant_size_l",
+      "run": 1,
+      "error": "Connection error."
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment 1 (Terminal UI)",
+      "task": "t03_cart_total_check",
+      "run": 1,
+      "error": "Connection error."
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery 1 (Terminal Root)",
+      "task": "t01_find_add_simple",
+      "run": 1,
+      "error": "Connection error."
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery 1 (Terminal Root)",
+      "task": "t02_variant_size_l",
+      "run": 1,
+      "error": "Connection error."
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery 1 (Terminal Root)",
+      "task": "t03_cart_total_check",
+      "run": 1,
+      "error": "Connection error."
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment 2 (Doc UI)",
+      "task": "t01_find_add_simple",
+      "run": 1,
+      "error": "Connection error."
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment 2 (Doc UI)",
+      "task": "t02_variant_size_l",
+      "run": 1,
+      "error": "Connection error."
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Treatment 2 (Doc UI)",
+      "task": "t03_cart_total_check",
+      "run": 1,
+      "error": "Connection error."
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery 2 (Doc Root)",
+      "task": "t01_find_add_simple",
+      "run": 1,
+      "error": "Connection error."
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery 2 (Doc Root)",
+      "task": "t02_variant_size_l",
+      "run": 1,
+      "error": "Connection error."
+    },
+    {
+      "success": false,
+      "steps": 0,
+      "entered_agent_view": false,
+      "agent_actions": 0,
+      "condition": "Discovery 2 (Doc Root)",
+      "task": "t03_cart_total_check",
+      "run": 1,
+      "error": "Connection error."
+    }
+  ]
+}

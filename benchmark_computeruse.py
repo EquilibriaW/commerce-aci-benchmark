@@ -30,7 +30,6 @@ if sys.stderr.encoding != 'utf-8':
 from pathlib import Path
 from typing import Optional
 
-import httpx
 from anthropic import Anthropic
 from playwright.async_api import async_playwright, Page, Browser
 from pydantic import BaseModel
@@ -169,7 +168,7 @@ class ComputerUseAgent:
 
     # UI actions that count for metrics (exclude screenshot/wait/mouse_move)
     UI_ACTIONS = {'left_click', 'right_click', 'double_click', 'triple_click',
-                  'left_click_drag', 'type', 'key'}
+                  'left_click_drag', 'type', 'key', 'scroll'}
     # Max conversation cycles to keep (preserve initial prompt, truncate older cycles)
     MAX_HISTORY_CYCLES = 5
 
@@ -212,48 +211,36 @@ class ComputerUseAgent:
         self.action_log.append(log_entry)
         console.print(f"    [dim]{log_entry}[/dim]")
 
-    async def reset_session(self, base_url: str):
-        """Reset the session via API."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{base_url}/agent/reset",
-                headers={"X-Benchmark-Secret": BENCHMARK_SECRET}
-            )
-            if resp.status_code != 200:
-                raise Exception(f"Failed to reset session: {resp.status_code} {resp.text}")
+    async def reset_session(self, base_url: str, discoverability: str = "navbar", capability: str = "advantage"):
+        """Reset the session via API using Playwright's request context for cookie consistency.
 
-            # Extract and set the cookie
-            if "set-cookie" in resp.headers:
-                cookie_header = resp.headers["set-cookie"]
-                # Parse cartId from cookie
-                for part in cookie_header.split(";"):
-                    if "cartId=" in part:
-                        cart_id = part.split("cartId=")[1].strip()
-                        await self.page.context.add_cookies([{
-                            "name": "cartId",
-                            "value": cart_id,
-                            "domain": "localhost",
-                            "path": "/"
-                        }])
-                        break
+        Args:
+            base_url: Base URL of the app
+            discoverability: "navbar" (visible link) or "hidden" (no link)
+            capability: "advantage" (agent actions enabled) or "parity" (read-only)
+        """
+        # Use Playwright's request context - cookies are automatically shared with browser
+        resp = await self.page.context.request.post(
+            f"{base_url}/agent/reset",
+            headers={
+                "X-Benchmark-Secret": BENCHMARK_SECRET,
+                "X-Benchmark-Discoverability": discoverability,
+                "X-Benchmark-Capability": capability
+            }
+        )
+        if resp.status != 200:
+            raise Exception(f"Failed to reset session: {resp.status} {await resp.text()}")
 
     async def get_ground_truth(self, base_url: str) -> dict:
-        """Get the current cart state from the API."""
-        # Get cookies from browser context
-        cookies = await self.page.context.cookies()
-        cookie_header = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{base_url}/agent/state",
-                headers={
-                    "X-Benchmark-Secret": BENCHMARK_SECRET,
-                    "Cookie": cookie_header
-                }
-            )
-            if resp.status_code == 200:
-                return resp.json()
-            return {}
+        """Get the current cart state from the API using Playwright's request context."""
+        # Use Playwright's request context - cookies are automatically shared
+        resp = await self.page.context.request.get(
+            f"{base_url}/agent/state",
+            headers={"X-Benchmark-Secret": BENCHMARK_SECRET}
+        )
+        if resp.status == 200:
+            return await resp.json()
+        return {}
 
     def _truncate_history(self):
         """Truncate conversation history while preserving initial prompt.
@@ -609,8 +596,26 @@ class ComputerUseAgent:
         ]
 
 
-async def run_trial(task: dict, target_url: str, api_url: str, condition_name: str, run_num: int) -> dict:
-    """Run a single trial of a task."""
+async def run_trial(
+    task: dict,
+    target_url: str,
+    api_url: str,
+    condition_name: str,
+    run_num: int,
+    discoverability: str = "navbar",
+    capability: str = "advantage"
+) -> dict:
+    """Run a single trial of a task.
+
+    Args:
+        task: Task definition with id, instruction, verifier
+        target_url: Starting URL for the agent
+        api_url: Base URL for API calls (reset, state)
+        condition_name: Human-readable condition name
+        run_num: Run number (1-indexed)
+        discoverability: "navbar" or "hidden" - controls agent UI visibility
+        capability: "advantage" or "parity" - controls agent actions
+    """
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY environment variable is required")
 
@@ -622,7 +627,7 @@ async def run_trial(task: dict, target_url: str, api_url: str, condition_name: s
     run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if DEBUG_SCREENSHOTS:
         # Sanitize condition name for directory
-        safe_condition = condition_name.replace(" ", "_").replace("(", "").replace(")", "")
+        safe_condition = condition_name.replace(" ", "_").replace("(", "").replace(")", "").replace("/", "_")
         debug_dir = DEBUG_DIR / safe_condition / task["id"] / f"run_{run_num:02d}_{run_timestamp}"
 
     # Start wall time tracking
@@ -642,8 +647,8 @@ async def run_trial(task: dict, target_url: str, api_url: str, condition_name: s
         page = await context.new_page()
         agent = ComputerUseAgent(page, ANTHROPIC_API_KEY, debug_dir=debug_dir)
 
-        # Reset session
-        await agent.reset_session(api_url)
+        # Reset session with experimental factors
+        await agent.reset_session(api_url, discoverability=discoverability, capability=capability)
 
         # Navigate to starting page
         await page.goto(target_url)
@@ -704,33 +709,133 @@ async def main():
 
     results = []
 
-    # Test conditions
+    # === FACTORIZED EXPERIMENTAL CONDITIONS ===
+    # Three independent factors:
+    #   app: baseline | treatment | treatment-docs
+    #   discoverability: navbar | hidden (treatment/treatment-docs only)
+    #   capability: advantage | parity (treatment/treatment-docs only)
+    #
+    # Plus entry point variations for adoption measurement:
+    #   start: root | /agent (forced)
+
     CONDITIONS = [
+        # --- Baseline (no factors - control condition) ---
         {
-            "name": "Control (Human UI)",
+            "name": "Baseline/Root",
+            "app": "baseline",
             "target_url": URL_BASELINE,
-            "api_url": URL_BASELINE
+            "api_url": URL_BASELINE,
+            "discoverability": "navbar",  # no-op for baseline
+            "capability": "advantage",     # no-op for baseline
         },
+
+        # --- Treatment (Terminal UI) - Full factorial ---
+        # discoverability=navbar, capability=advantage (full features)
         {
-            "name": "Treatment 1 (Terminal UI)",
-            "target_url": f"{URL_TREATMENT}/agent",
-            "api_url": URL_TREATMENT
-        },
-        {
-            "name": "Discovery 1 (Terminal Root)",
+            "name": "Treatment/Root/navbar/advantage",
+            "app": "treatment",
             "target_url": URL_TREATMENT,
-            "api_url": URL_TREATMENT
+            "api_url": URL_TREATMENT,
+            "discoverability": "navbar",
+            "capability": "advantage",
         },
         {
-            "name": "Treatment 2 (Doc UI)",
-            "target_url": f"{URL_TREATMENT_DOCS}/agent",
-            "api_url": URL_TREATMENT_DOCS
+            "name": "Treatment/Agent/navbar/advantage",
+            "app": "treatment",
+            "target_url": f"{URL_TREATMENT}/agent",
+            "api_url": URL_TREATMENT,
+            "discoverability": "navbar",
+            "capability": "advantage",
+        },
+        # discoverability=hidden, capability=advantage
+        {
+            "name": "Treatment/Root/hidden/advantage",
+            "app": "treatment",
+            "target_url": URL_TREATMENT,
+            "api_url": URL_TREATMENT,
+            "discoverability": "hidden",
+            "capability": "advantage",
+        },
+        # discoverability=navbar, capability=parity (read-only agent UI)
+        {
+            "name": "Treatment/Root/navbar/parity",
+            "app": "treatment",
+            "target_url": URL_TREATMENT,
+            "api_url": URL_TREATMENT,
+            "discoverability": "navbar",
+            "capability": "parity",
         },
         {
-            "name": "Discovery 2 (Doc Root)",
+            "name": "Treatment/Agent/navbar/parity",
+            "app": "treatment",
+            "target_url": f"{URL_TREATMENT}/agent",
+            "api_url": URL_TREATMENT,
+            "discoverability": "navbar",
+            "capability": "parity",
+        },
+        # discoverability=hidden, capability=parity (worst case - no link, read-only)
+        {
+            "name": "Treatment/Root/hidden/parity",
+            "app": "treatment",
+            "target_url": URL_TREATMENT,
+            "api_url": URL_TREATMENT,
+            "discoverability": "hidden",
+            "capability": "parity",
+        },
+
+        # --- Treatment-Docs (Documentation UI) - Full factorial ---
+        # discoverability=navbar, capability=advantage (full features)
+        {
+            "name": "TreatmentDocs/Root/navbar/advantage",
+            "app": "treatment-docs",
             "target_url": URL_TREATMENT_DOCS,
-            "api_url": URL_TREATMENT_DOCS
-        }
+            "api_url": URL_TREATMENT_DOCS,
+            "discoverability": "navbar",
+            "capability": "advantage",
+        },
+        {
+            "name": "TreatmentDocs/Agent/navbar/advantage",
+            "app": "treatment-docs",
+            "target_url": f"{URL_TREATMENT_DOCS}/agent",
+            "api_url": URL_TREATMENT_DOCS,
+            "discoverability": "navbar",
+            "capability": "advantage",
+        },
+        # discoverability=hidden, capability=advantage
+        {
+            "name": "TreatmentDocs/Root/hidden/advantage",
+            "app": "treatment-docs",
+            "target_url": URL_TREATMENT_DOCS,
+            "api_url": URL_TREATMENT_DOCS,
+            "discoverability": "hidden",
+            "capability": "advantage",
+        },
+        # discoverability=navbar, capability=parity
+        {
+            "name": "TreatmentDocs/Root/navbar/parity",
+            "app": "treatment-docs",
+            "target_url": URL_TREATMENT_DOCS,
+            "api_url": URL_TREATMENT_DOCS,
+            "discoverability": "navbar",
+            "capability": "parity",
+        },
+        {
+            "name": "TreatmentDocs/Agent/navbar/parity",
+            "app": "treatment-docs",
+            "target_url": f"{URL_TREATMENT_DOCS}/agent",
+            "api_url": URL_TREATMENT_DOCS,
+            "discoverability": "navbar",
+            "capability": "parity",
+        },
+        # discoverability=hidden, capability=parity
+        {
+            "name": "TreatmentDocs/Root/hidden/parity",
+            "app": "treatment-docs",
+            "target_url": URL_TREATMENT_DOCS,
+            "api_url": URL_TREATMENT_DOCS,
+            "discoverability": "hidden",
+            "capability": "parity",
+        },
     ]
 
     console.rule("[bold]Commerce ACI Benchmark - Claude Computer Use[/bold]")
@@ -739,6 +844,7 @@ async def main():
     console.print(f"Display: {DISPLAY_WIDTH}x{DISPLAY_HEIGHT}")
     console.print(f"Max iterations: {MAX_ITERATIONS}")
     console.print(f"Runs per task: {RUNS_PER_TASK}")
+    console.print(f"Conditions: {len(CONDITIONS)}")
     console.print(f"Debug screenshots: {DEBUG_DIR}")
     console.print()
 
@@ -753,11 +859,16 @@ async def main():
                         cond["target_url"],
                         cond["api_url"],
                         cond["name"],
-                        run_num + 1
+                        run_num + 1,
+                        discoverability=cond["discoverability"],
+                        capability=cond["capability"]
                     )
                     results.append({
                         **res,
                         "condition": cond["name"],
+                        "app": cond["app"],
+                        "discoverability": cond["discoverability"],
+                        "capability": cond["capability"],
                         "task": task["id"],
                         "run": run_num + 1
                     })
@@ -779,6 +890,9 @@ async def main():
                         "wall_time_seconds": 0,
                         "forced_agent_start": "/agent" in cond["target_url"],
                         "condition": cond["name"],
+                        "app": cond["app"],
+                        "discoverability": cond["discoverability"],
+                        "capability": cond["capability"],
                         "task": task["id"],
                         "run": run_num + 1,
                         "error": str(e)
@@ -786,28 +900,16 @@ async def main():
 
     # --- METRICS REPORTING ---
     console.print()
-    table = Table(title="Benchmark Results")
-    table.add_column("Condition")
-    table.add_column("Accuracy")
-    table.add_column("Avg Steps")
-    table.add_column("Model Calls")
-    table.add_column("UI Actions")
-    table.add_column("Wall Time")
-    table.add_column("Adoption %")
-    table.add_column("Agent Actions")
 
-    for cond in CONDITIONS:
-        name = cond["name"]
-        subset = [r for r in results if r["condition"] == name]
+    # Helper function to compute metrics for a subset
+    def compute_metrics(subset: list) -> dict:
         if not subset:
-            continue
-
+            return None
         wins = [r for r in subset if r["success"]]
         acc = len(wins) / len(subset) * 100
         avg_steps = statistics.mean([r["steps"] for r in wins]) if wins else 0.0
 
         # Calculate adoption - show "N/A" for forced /agent starts
-        # (adoption is only meaningful when starting from root)
         forced_starts = [r for r in subset if r.get("forced_agent_start", False)]
         if len(forced_starts) == len(subset):
             adoption_str = "N/A"
@@ -820,23 +922,112 @@ async def main():
             else:
                 adoption_str = "N/A"
 
-        avg_actions = statistics.mean([r["agent_actions"] for r in subset])
-        avg_model_calls = statistics.mean([r.get("model_calls", 0) for r in subset])
-        avg_ui_actions = statistics.mean([r.get("ui_actions", 0) for r in subset])
-        avg_wall_time = statistics.mean([r.get("wall_time_seconds", 0) for r in subset])
+        return {
+            "n": len(subset),
+            "accuracy": acc,
+            "avg_steps": avg_steps,
+            "avg_model_calls": statistics.mean([r.get("model_calls", 0) for r in subset]),
+            "avg_ui_actions": statistics.mean([r.get("ui_actions", 0) for r in subset]),
+            "avg_wall_time": statistics.mean([r.get("wall_time_seconds", 0) for r in subset]),
+            "adoption": adoption_str,
+            "avg_agent_actions": statistics.mean([r["agent_actions"] for r in subset])
+        }
 
-        table.add_row(
-            name,
-            f"{acc:.0f}%",
-            f"{avg_steps:.1f}",
-            f"{avg_model_calls:.1f}",
-            f"{avg_ui_actions:.1f}",
-            f"{avg_wall_time:.1f}s",
-            adoption_str,
-            f"{avg_actions:.1f}"
-        )
+    # === TABLE 1: Full condition breakdown ===
+    table = Table(title="Results by Condition")
+    table.add_column("Condition")
+    table.add_column("Accuracy")
+    table.add_column("Steps")
+    table.add_column("Model")
+    table.add_column("UI")
+    table.add_column("Time")
+    table.add_column("Adopt")
+    table.add_column("AgentAPI")
 
+    for cond in CONDITIONS:
+        name = cond["name"]
+        subset = [r for r in results if r["condition"] == name]
+        m = compute_metrics(subset)
+        if m:
+            table.add_row(
+                name,
+                f"{m['accuracy']:.0f}%",
+                f"{m['avg_steps']:.1f}",
+                f"{m['avg_model_calls']:.1f}",
+                f"{m['avg_ui_actions']:.1f}",
+                f"{m['avg_wall_time']:.1f}s",
+                m['adoption'],
+                f"{m['avg_agent_actions']:.1f}"
+            )
     console.print(table)
+
+    # === TABLE 2: Factor split by App ===
+    console.print()
+    app_table = Table(title="Results by App")
+    app_table.add_column("App")
+    app_table.add_column("N")
+    app_table.add_column("Accuracy")
+    app_table.add_column("Steps")
+    app_table.add_column("Time")
+
+    for app in ["baseline", "treatment", "treatment-docs"]:
+        subset = [r for r in results if r.get("app") == app]
+        m = compute_metrics(subset)
+        if m:
+            app_table.add_row(
+                app,
+                str(m['n']),
+                f"{m['accuracy']:.0f}%",
+                f"{m['avg_steps']:.1f}",
+                f"{m['avg_wall_time']:.1f}s"
+            )
+    console.print(app_table)
+
+    # === TABLE 3: Factor split by Capability ===
+    console.print()
+    cap_table = Table(title="Results by Capability (treatment apps only)")
+    cap_table.add_column("Capability")
+    cap_table.add_column("N")
+    cap_table.add_column("Accuracy")
+    cap_table.add_column("Steps")
+    cap_table.add_column("AgentAPI")
+
+    for cap in ["advantage", "parity"]:
+        subset = [r for r in results if r.get("capability") == cap and r.get("app") != "baseline"]
+        m = compute_metrics(subset)
+        if m:
+            cap_table.add_row(
+                cap,
+                str(m['n']),
+                f"{m['accuracy']:.0f}%",
+                f"{m['avg_steps']:.1f}",
+                f"{m['avg_agent_actions']:.1f}"
+            )
+    console.print(cap_table)
+
+    # === TABLE 4: Factor split by Discoverability ===
+    console.print()
+    disc_table = Table(title="Results by Discoverability (root starts only)")
+    disc_table.add_column("Discoverability")
+    disc_table.add_column("N")
+    disc_table.add_column("Accuracy")
+    disc_table.add_column("Adoption")
+
+    for disc in ["navbar", "hidden"]:
+        # Only look at root starts (non-forced) for discoverability analysis
+        subset = [r for r in results
+                  if r.get("discoverability") == disc
+                  and not r.get("forced_agent_start", False)
+                  and r.get("app") != "baseline"]
+        m = compute_metrics(subset)
+        if m:
+            disc_table.add_row(
+                disc,
+                str(m['n']),
+                f"{m['accuracy']:.0f}%",
+                m['adoption']
+            )
+    console.print(disc_table)
 
     # Save results
     results_dir = Path("benchmark_results")
@@ -844,6 +1035,34 @@ async def main():
 
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_file = results_dir / f"computeruse_{run_id}.json"
+
+    # Compute factor-level aggregates for JSON output
+    factor_aggregates = {
+        "by_app": {},
+        "by_capability": {},
+        "by_discoverability": {}
+    }
+
+    for app in ["baseline", "treatment", "treatment-docs"]:
+        subset = [r for r in results if r.get("app") == app]
+        m = compute_metrics(subset)
+        if m:
+            factor_aggregates["by_app"][app] = m
+
+    for cap in ["advantage", "parity"]:
+        subset = [r for r in results if r.get("capability") == cap and r.get("app") != "baseline"]
+        m = compute_metrics(subset)
+        if m:
+            factor_aggregates["by_capability"][cap] = m
+
+    for disc in ["navbar", "hidden"]:
+        subset = [r for r in results
+                  if r.get("discoverability") == disc
+                  and not r.get("forced_agent_start", False)
+                  and r.get("app") != "baseline"]
+        m = compute_metrics(subset)
+        if m:
+            factor_aggregates["by_discoverability"][disc] = m
 
     output_data = {
         "run_id": run_id,
@@ -856,8 +1075,16 @@ async def main():
             "max_iterations": MAX_ITERATIONS,
             "runs_per_task": RUNS_PER_TASK,
             "treatment_url": URL_TREATMENT,
-            "baseline_url": URL_BASELINE
+            "treatment_docs_url": URL_TREATMENT_DOCS,
+            "baseline_url": URL_BASELINE,
+            "conditions": [c["name"] for c in CONDITIONS]
         },
+        "factors": {
+            "apps": ["baseline", "treatment", "treatment-docs"],
+            "discoverability": ["navbar", "hidden"],
+            "capability": ["advantage", "parity"]
+        },
+        "factor_aggregates": factor_aggregates,
         "results": results
     }
 

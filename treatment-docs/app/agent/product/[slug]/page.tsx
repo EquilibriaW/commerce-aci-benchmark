@@ -1,4 +1,5 @@
 import { getProduct } from 'lib/shopify';
+import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 
 export default async function AgentProductPage({
@@ -7,7 +8,14 @@ export default async function AgentProductPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const product = await getProduct(slug);
+  const [product, cookieStore] = await Promise.all([
+    getProduct(slug),
+    cookies()
+  ]);
+
+  // Check capability mode - in parity mode, hide interactive actions
+  const capability = cookieStore.get('bench_capability')?.value;
+  const isParity = capability === 'parity';
 
   if (!product) {
     notFound();
@@ -316,47 +324,58 @@ export default async function AgentProductPage({
             </table>
           </section>
 
-          <section id="methods">
-            <h2 className="section-title">Methods</h2>
+          {!isParity && (
+            <section id="methods">
+              <h2 className="section-title">Methods</h2>
 
-            <div className="method-block">
-              <div className="method-signature">
-                <span className="kw">def</span> <span className="func">session.cart.add</span>(<span className="prm">variant_id</span>: <span className="str">str</span>, <span className="prm">quantity</span>: <span className="str">int</span> = 1) -&gt; Cart
+              <div className="method-block">
+                <div className="method-signature">
+                  <span className="kw">def</span> <span className="func">session.cart.add</span>(<span className="prm">variant_id</span>: <span className="str">str</span>, <span className="prm">quantity</span>: <span className="str">int</span> = 1) -&gt; Cart
+                </div>
+
+                <form action="/agent/actions/add" method="POST" data-agent-id={`action:add_to_cart:${product.handle}`}>
+                  <input type="hidden" name="productHandle" value={product.handle} />
+
+                  <div className="form-row">
+                    <label htmlFor="variantId"># Select variant_id:</label>
+                    <select name="variantId" id="variantId" required>
+                      {product.variants.map(variant => (
+                        <option key={variant.id} value={variant.id}>
+                          {variant.id} ({variant.title} - ${variant.price.amount})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-row">
+                    <label htmlFor="quantity"># Set quantity:</label>
+                    <input
+                      type="number"
+                      name="quantity"
+                      id="quantity"
+                      defaultValue={1}
+                      min={1}
+                      max={10}
+                      required
+                    />
+                  </div>
+
+                  <button type="submit" className="execute-btn" data-agent-id={`submit:add_to_cart:${product.handle}`}>
+                    &gt;&gt;&gt; session.cart.add(variant_id=&quot;...&quot;)
+                  </button>
+                </form>
               </div>
+            </section>
+          )}
 
-              <form action="/agent/actions/add" method="POST" data-agent-id={`action:add_to_cart:${product.handle}`}>
-                <input type="hidden" name="productHandle" value={product.handle} />
-
-                <div className="form-row">
-                  <label htmlFor="variantId"># Select variant_id:</label>
-                  <select name="variantId" id="variantId" required>
-                    {product.variants.map(variant => (
-                      <option key={variant.id} value={variant.id}>
-                        {variant.id} ({variant.title} - ${variant.price.amount})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-row">
-                  <label htmlFor="quantity"># Set quantity:</label>
-                  <input
-                    type="number"
-                    name="quantity"
-                    id="quantity"
-                    defaultValue={1}
-                    min={1}
-                    max={10}
-                    required
-                  />
-                </div>
-
-                <button type="submit" className="execute-btn" data-agent-id={`submit:add_to_cart:${product.handle}`}>
-                  &gt;&gt;&gt; session.cart.add(variant_id=&quot;...&quot;)
-                </button>
-              </form>
-            </div>
-          </section>
+          {isParity && (
+            <section id="methods">
+              <h2 className="section-title">Methods</h2>
+              <p style={{ color: '#666', fontStyle: 'italic', padding: '15px 0' }}>
+                [Parity mode: Use the regular product pages to add items to cart]
+              </p>
+            </section>
+          )}
 
           <div className="doc-footer">
             <a href="/agent">&larr; Back to Module Index</a>

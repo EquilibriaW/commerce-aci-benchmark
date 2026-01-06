@@ -4,6 +4,20 @@ import { redirect } from 'next/navigation';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
+  // Gate by capability_mode - block in parity mode
+  const capability = request.cookies.get('bench_capability')?.value;
+  if (capability === 'parity') {
+    const contentType = request.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      return NextResponse.json({
+        success: false,
+        error: 'capability_parity'
+      }, { status: 403, headers: { 'Cache-Control': 'no-store' } });
+    } else {
+      redirect('/agent?error=capability_parity');
+    }
+  }
+
   try {
     // Support both form data and JSON body
     const contentType = request.headers.get('content-type') || '';

@@ -1,12 +1,18 @@
 Step 01: screenshot - {'action': 'screenshot'}
-Step 02: left_click - at (904, 687)
-Step 03: left_click - at (151, 37)
-Step 04: left_click - at (322, 226)
-Step 05: left_click - at (926, 316)
-Step 06: left_click - at (1028, 433)
-Step 07: left_click - at (1085, 749)
-Step 08: scroll - delta_y=0
-Step 09: scroll - delta_y=0
-Step 10: key - ''
-Step 11: left_click - at (496, 777)
-Step 12: key - ''
+Step 02: left_click - at (630, 37)
+Step 03: type - 'black t-shirt...'
+Step 04: left_click - at (824, 37)
+Step 05: wait - {'action': 'wait', 'duration': 2}
+Step 06: left_click - at (251, 37)
+Step 07: left_click - at (322, 226)
+Step 08: left_click - at (926, 316)
+Step 09: left_click - at (1028, 433)
+Step 10: left_click - at (1085, 749)
+Step 11: scroll - down by 3
+Step 12: left_click - at (496, 623)
+Step 13: triple_click - {'action': 'triple_click', 'coordinate': [496, 623
+Step 14: type - 'customer@example.com...'
+Step 15: left_click - at (783, 623)
+Step 16: triple_click - {'action': 'triple_click', 'coordinate': [783, 623
+Step 17: type - 'Alex Johnson...'
+Step 18: left_click - at (640, 688)

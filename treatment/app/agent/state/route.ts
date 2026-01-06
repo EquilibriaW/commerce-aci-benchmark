@@ -1,4 +1,4 @@
-import { getCart, getLastCompletedOrder } from 'lib/shopify';
+import { getCart, getCompletedOrder } from 'lib/shopify';
 import { NextRequest, NextResponse } from 'next/server';
 
 const BENCHMARK_SECRET = process.env.BENCHMARK_SECRET;
@@ -32,8 +32,9 @@ export async function GET(request: NextRequest) {
   try {
     const cart = await getCart();
 
-    // Get the most recent completed order (doesn't depend on cookie)
-    const completedOrder = getLastCompletedOrder();
+    // Get completed order for THIS session only (session-scoped by cartId)
+    const cartId = request.cookies.get('cartId')?.value;
+    const completedOrder = cartId ? getCompletedOrder(cartId) : undefined;
 
     const state = {
       cart: cart ? {

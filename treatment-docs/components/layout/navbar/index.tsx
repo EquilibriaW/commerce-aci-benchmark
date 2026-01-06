@@ -3,6 +3,7 @@ import LogoSquare from 'components/logo-square';
 import { getMenu } from 'lib/shopify';
 import { Menu } from 'lib/shopify/types';
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { Suspense } from 'react';
 import MobileMenu from './mobile-menu';
 import Search, { SearchSkeleton } from './search';
@@ -11,6 +12,11 @@ const { SITE_NAME } = process.env;
 
 export async function Navbar() {
   const menu = await getMenu('next-js-frontend-header-menu');
+
+  // Check discoverability factor - hide /agent link when "hidden"
+  const cookieStore = await cookies();
+  const discoverability = cookieStore.get('bench_discoverability')?.value;
+  const showAgentLink = discoverability !== 'hidden';
 
   return (
     <nav className="relative flex items-center justify-between p-4 lg:px-6">
@@ -33,15 +39,17 @@ export async function Navbar() {
           </Link>
           {menu.length ? (
             <ul className="hidden gap-6 text-sm md:flex md:items-center">
-              <li>
-                <Link
-                  href="/agent"
-                  prefetch={true}
-                  className="font-serif font-bold text-blue-700 underline-offset-4 hover:text-blue-900 hover:underline"
-                >
-                  [Agent Interface]
-                </Link>
-              </li>
+              {showAgentLink && (
+                <li>
+                  <Link
+                    href="/agent"
+                    prefetch={true}
+                    className="font-mono font-bold text-blue-600 underline-offset-4 hover:text-blue-800 hover:underline"
+                  >
+                    [⚡ Agent Terminal]
+                  </Link>
+                </li>
+              )}
               {menu.map((item: Menu) => (
                 <li key={item.title}>
                   <Link

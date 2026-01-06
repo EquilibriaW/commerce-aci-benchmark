@@ -1,4 +1,5 @@
 import { getProduct } from 'lib/shopify';
+import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 
 export default async function AgentProductPage({
@@ -7,7 +8,14 @@ export default async function AgentProductPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const product = await getProduct(slug);
+  const [product, cookieStore] = await Promise.all([
+    getProduct(slug),
+    cookies()
+  ]);
+
+  // Check capability mode - in parity mode, hide interactive actions
+  const capability = cookieStore.get('bench_capability')?.value;
+  const isParity = capability === 'parity';
 
   if (!product) {
     notFound();
@@ -219,45 +227,58 @@ export default async function AgentProductPage({
           </div>
         </div>
 
-        <div className="section">
-          <div className="section-header">Execute Action</div>
-          <div className="section-body">
-            <div className="action-box">
-              <h3>Add to Cart</h3>
-              <form action="/agent/actions/add" method="POST" data-agent-id={`action:add_to_cart:${product.handle}`}>
-                <input type="hidden" name="productHandle" value={product.handle} />
+        {!isParity && (
+          <div className="section">
+            <div className="section-header">Execute Action</div>
+            <div className="section-body">
+              <div className="action-box">
+                <h3>Add to Cart</h3>
+                <form action="/agent/actions/add" method="POST" data-agent-id={`action:add_to_cart:${product.handle}`}>
+                  <input type="hidden" name="productHandle" value={product.handle} />
 
-                <div className="form-row">
-                  <label htmlFor="variantId">VARIANT:</label>
-                  <select name="variantId" id="variantId" required>
-                    {product.variants.map(variant => (
-                      <option key={variant.id} value={variant.id}>
-                        {variant.title} - ${variant.price.amount}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                  <div className="form-row">
+                    <label htmlFor="variantId">VARIANT:</label>
+                    <select name="variantId" id="variantId" required>
+                      {product.variants.map(variant => (
+                        <option key={variant.id} value={variant.id}>
+                          {variant.title} - ${variant.price.amount}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div className="form-row">
-                  <label htmlFor="quantity">QTY:</label>
-                  <input
-                    type="number"
-                    name="quantity"
-                    id="quantity"
-                    defaultValue={1}
-                    min={1}
-                    max={10}
-                    required
-                  />
-                </div>
+                  <div className="form-row">
+                    <label htmlFor="quantity">QTY:</label>
+                    <input
+                      type="number"
+                      name="quantity"
+                      id="quantity"
+                      defaultValue={1}
+                      min={1}
+                      max={10}
+                      required
+                    />
+                  </div>
 
-                <button type="submit" className="btn-execute" data-agent-id={`submit:add_to_cart:${product.handle}`}>
-                  [ EXECUTE: ADD_TO_CART ]
-                </button>
-              </form>
+                  <button type="submit" className="btn-execute" data-agent-id={`submit:add_to_cart:${product.handle}`}>
+                    [ EXECUTE: ADD_TO_CART ]
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {isParity && (
+          <div className="section">
+            <div className="section-header">Actions</div>
+            <div className="section-body">
+              <p style={{ color: '#666', fontStyle: 'italic' }}>
+                [Parity mode: Use the regular product pages to add items to cart]
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="footer">
           <a href="/agent">[ RETURN TO DASHBOARD ]</a>
