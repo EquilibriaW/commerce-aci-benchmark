@@ -76,19 +76,72 @@ python benchmark_computeruse.py
 
 ## Understanding the Results
 
-The benchmark reports:
+### Output Tables
 
-| Metric | Description |
-|--------|-------------|
-| **Accuracy** | Task completion rate (%) |
-| **Avg Steps** | Average steps to complete successful tasks |
-| **Model Calls** | Number of LLM API calls made |
-| **UI Actions** | Real UI actions (clicks, drags, typing, keypresses) |
-| **Wall Time** | Elapsed wall-clock time per trial |
-| **Adoption %** | How often agent discovered/used agent routes (N/A for forced `/agent` starts) |
-| **Agent Actions** | API calls to `/agent/actions/*` endpoints |
+The benchmark produces 5 summary tables:
 
-Results are saved to `benchmark_results/` as JSON files. Debug screenshots are saved to `debug_screenshots/`.
+1. **Results by Condition** - Full breakdown per experimental condition
+2. **Results by App** - Aggregated by app (baseline, treatment, treatment-docs)
+3. **Results by Capability** - Compares advantage vs parity modes
+4. **Results by Discoverability** - Compares navbar vs hidden agent link visibility
+5. **Conditional Success** - Success rate split by whether agent adopted the UI
+
+### Metrics Glossary
+
+| Metric | Description | Scope |
+|--------|-------------|-------|
+| **N** | Number of trials | All |
+| **Accuracy** | Task completion rate (%) | All |
+| **Steps** | Average steps to complete task | Wins only |
+| **Model** | Average LLM API calls | Wins only |
+| **UI** | Average UI actions (click, drag, type, key, scroll) | Wins only |
+| **Time** | Average wall-clock seconds | Wins only |
+| **Adopt** | % of trials where agent navigated to `/agent` | Discovery runs only |
+| **Adopt@Step** | Average step number when agent first visited `/agent` | Adopters only |
+| **AgentAPI** | Average calls to `/agent/actions/*` endpoints | Wins only |
+
+> **Note**: Efficiency metrics (Steps, Model, UI, Time, AgentAPI) are computed over successful trials only, so you're comparing apples-to-apples efficiency.
+
+### Experimental Factors
+
+The benchmark uses a factorized experimental design with these independent variables:
+
+| Factor | Values | Description |
+|--------|--------|-------------|
+| **App** | `baseline`, `treatment`, `treatment-docs` | Which UI variant |
+| **Start** | Root (`/`), Agent (`/agent`) | Entry point for the agent |
+| **Discoverability** | `navbar`, `hidden` | Whether `/agent` link is visible in nav |
+| **Capability** | `advantage`, `parity` | Whether agent UI has interactive actions or is read-only |
+
+**Key comparisons:**
+- `advantage` vs `parity`: Measures ease-of-use (can agent complete task faster with actions?)
+- `navbar` vs `hidden`: Measures willingness-to-adopt (does agent find/use the UI?)
+- Baseline vs Treatment: Overall lift from agent-optimized UI
+
+### Output Files
+
+Results are saved to `benchmark_results/computeruse_YYYYMMDD_HHMMSS.json`:
+
+```json
+{
+  "run_id": "20250106_120000",
+  "model": "claude-sonnet-4-5-20250929",
+  "config": { ... },
+  "factors": {
+    "apps": ["baseline", "treatment", "treatment-docs"],
+    "discoverability": ["navbar", "hidden"],
+    "capability": ["advantage", "parity"]
+  },
+  "factor_aggregates": {
+    "by_app": { ... },
+    "by_capability": { ... },
+    "by_discoverability": { ... }
+  },
+  "results": [ ... per-trial results ... ]
+}
+```
+
+Debug screenshots are saved to `debug_screenshots/{condition}/{task}/run_{n}/`.
 
 ---
 
@@ -255,28 +308,35 @@ Add your site to the `CONDITIONS` list in `benchmark_computeruse.py`:
 CONDITIONS = [
     # ... existing conditions ...
 
-    # Your custom site
+    # Your custom site - full factorial design
     {
-        "name": "My Custom Site",
-        "target_url": "http://localhost:4000",      # Starting URL
-        "api_url": "http://localhost:4000"          # Base URL for API calls
-    },
-
-    # Test discovery (agent starts at root, must find agent interface)
-    {
-        "name": "My Site (Discovery)",
+        "name": "MySite/Root/navbar/advantage",
+        "app": "mysite",
         "target_url": "http://localhost:4000",
-        "api_url": "http://localhost:4000"
+        "api_url": "http://localhost:4000",
+        "discoverability": "navbar",   # Agent link visible
+        "capability": "advantage",      # Interactive actions enabled
     },
-
-    # Test direct agent access
     {
-        "name": "My Site (Agent Direct)",
-        "target_url": "http://localhost:4000/agent",
-        "api_url": "http://localhost:4000"
+        "name": "MySite/Agent/navbar/advantage",
+        "app": "mysite",
+        "target_url": "http://localhost:4000/agent",  # Direct to agent UI
+        "api_url": "http://localhost:4000",
+        "discoverability": "navbar",
+        "capability": "advantage",
+    },
+    {
+        "name": "MySite/Root/hidden/advantage",
+        "app": "mysite",
+        "target_url": "http://localhost:4000",
+        "api_url": "http://localhost:4000",
+        "discoverability": "hidden",   # Agent link hidden
+        "capability": "advantage",
     },
 ]
 ```
+
+The `discoverability` and `capability` values are passed to `/agent/reset` as headers and set as cookies to control the UI behavior.
 
 ### Step 3: Run the Benchmark
 
