@@ -933,16 +933,22 @@ async def main():
                 adoption_str = "N/A"
                 avg_adoption_step = None
 
+        # Efficiency metrics are wins-only (comparing efficiency on successful runs)
+        avg_model_calls = statistics.mean([r.get("model_calls", 0) for r in wins]) if wins else 0.0
+        avg_ui_actions = statistics.mean([r.get("ui_actions", 0) for r in wins]) if wins else 0.0
+        avg_wall_time = statistics.mean([r.get("wall_time_seconds", 0) for r in wins]) if wins else 0.0
+
         return {
             "n": len(subset),
+            "n_wins": len(wins),
             "accuracy": acc,
             "avg_steps": avg_steps,
-            "avg_model_calls": statistics.mean([r.get("model_calls", 0) for r in subset]),
-            "avg_ui_actions": statistics.mean([r.get("ui_actions", 0) for r in subset]),
-            "avg_wall_time": statistics.mean([r.get("wall_time_seconds", 0) for r in subset]),
+            "avg_model_calls": avg_model_calls,
+            "avg_ui_actions": avg_ui_actions,
+            "avg_wall_time": avg_wall_time,
             "adoption": adoption_str,
             "avg_adoption_step": avg_adoption_step,
-            "avg_agent_actions": statistics.mean([r["agent_actions"] for r in subset])
+            "avg_agent_actions": statistics.mean([r["agent_actions"] for r in wins]) if wins else 0.0
         }
 
     # === TABLE 1: Full condition breakdown ===
@@ -1043,6 +1049,38 @@ async def main():
                 adopt_step_str
             )
     console.print(disc_table)
+
+    # === TABLE 5: Conditional success (discovery runs) ===
+    # For runs starting at root: compare success rate when agent adopted vs didn't adopt
+    console.print()
+    cond_table = Table(title="Conditional Success (discovery runs, treatment apps)")
+    cond_table.add_column("Adopted Agent UI?")
+    cond_table.add_column("N")
+    cond_table.add_column("Success Rate")
+    cond_table.add_column("Avg Steps (wins)")
+
+    # Only look at discovery runs (root starts, not baseline)
+    discovery_runs = [r for r in results
+                      if not r.get("forced_agent_start", False)
+                      and r.get("app") != "baseline"]
+
+    if discovery_runs:
+        # Split by adoption
+        adopted = [r for r in discovery_runs if r.get("entered_agent_view") or r.get("agent_actions", 0) > 0]
+        not_adopted = [r for r in discovery_runs if not (r.get("entered_agent_view") or r.get("agent_actions", 0) > 0)]
+
+        for label, subset in [("Yes", adopted), ("No", not_adopted)]:
+            if subset:
+                wins = [r for r in subset if r["success"]]
+                success_rate = len(wins) / len(subset) * 100
+                avg_steps = statistics.mean([r["steps"] for r in wins]) if wins else 0.0
+                cond_table.add_row(
+                    label,
+                    str(len(subset)),
+                    f"{success_rate:.0f}%",
+                    f"{avg_steps:.1f}"
+                )
+    console.print(cond_table)
 
     # Save results
     results_dir = Path("benchmark_results")
