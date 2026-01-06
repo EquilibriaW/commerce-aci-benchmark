@@ -617,12 +617,13 @@ async def run_trial(task: dict, target_url: str, api_url: str, condition_name: s
     # Track if we're starting on /agent (forced adoption - show N/A for adoption metric)
     forced_agent_start = "/agent" in target_url
 
-    # Set up debug directory
+    # Set up debug directory with timestamp
     debug_dir = None
+    run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if DEBUG_SCREENSHOTS:
         # Sanitize condition name for directory
         safe_condition = condition_name.replace(" ", "_").replace("(", "").replace(")", "")
-        debug_dir = DEBUG_DIR / safe_condition / task["id"] / f"run_{run_num:02d}"
+        debug_dir = DEBUG_DIR / safe_condition / task["id"] / f"run_{run_num:02d}_{run_timestamp}"
 
     # Start wall time tracking
     start_time = time.perf_counter()
