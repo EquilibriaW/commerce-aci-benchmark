@@ -563,8 +563,11 @@ class ComputerUseAgent:
                     "space": " ",
                 }
                 key = key_map.get(key, key)
-                await self.page.keyboard.press(key)
-                result_text = f"Pressed key: {key}"
+                if key:
+                    await self.page.keyboard.press(key)
+                    result_text = f"Pressed key: {key}"
+                else:
+                    result_text = "Warning: empty key ignored"
 
             elif action == "hold_key":
                 key = action_input.get("key", "")
