@@ -199,11 +199,11 @@ class ComputerUseAgent:
         screenshot_b64 = base64.standard_b64encode(screenshot_bytes).decode("utf-8")
         return screenshot_b64, screenshot_bytes
 
-    def _save_debug_screenshot(self, screenshot_bytes: bytes, step: int):
+    def _save_debug_screenshot(self, screenshot_bytes: bytes, step: int, suffix: str = ""):
         """Save screenshot to debug directory."""
         if self.debug_dir:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
-            screenshot_path = self.debug_dir / f"step_{step:02d}.png"
+            screenshot_path = self.debug_dir / f"step_{step:02d}{suffix}.png"
             screenshot_path.write_bytes(screenshot_bytes)
 
     def _log_action(self, step: int, action: str, details: str):
@@ -319,13 +319,11 @@ class ComputerUseAgent:
                     for c in content
                 )
 
+        # Always take and save a debug screenshot at the start of each step
+        screenshot_b64, screenshot_bytes = await self.take_screenshot()
+        self._save_debug_screenshot(screenshot_bytes, self.step_count)
+
         if not last_was_tool_result:
-            # Take screenshot
-            screenshot_b64, screenshot_bytes = await self.take_screenshot()
-
-            # Save debug screenshot
-            self._save_debug_screenshot(screenshot_bytes, self.step_count)
-
             # Build messages - use system parameter for system prompt
             if not self.conversation_history:
                 # First message - task instruction + screenshot
@@ -590,7 +588,10 @@ class ComputerUseAgent:
             result_text = f"Action failed: {str(e)}"
 
         # CRITICAL: Take new screenshot after action so Claude sees the result
-        screenshot_b64, _ = await self.take_screenshot()
+        screenshot_b64, screenshot_bytes = await self.take_screenshot()
+
+        # Save post-action screenshot for debugging
+        self._save_debug_screenshot(screenshot_bytes, self.step_count, suffix="_action")
 
         return [
             {"type": "text", "text": result_text},
