@@ -1,0 +1,18 @@
+Step 01: screenshot - {'action': 'screenshot'}
+Step 02: left_click - at (709, 262)
+Step 03: left_click - at (1047, 161)
+Step 04: left_click - at (663, 196)
+Step 05: left_click - at (670, 196)
+Step 06: left_click - at (663, 196)
+Step 07: left_click - at (658, 196)
+Step 08: key - ''
+Step 09: left_click - at (46, 196)
+Step 10: left_click - at (926, 316)
+Step 11: left_click - at (1028, 433)
+Step 12: left_click - at (1085, 749)
+Step 13: left_click - at (1234, 45)
+Step 14: left_click - at (1028, 433)
+Step 15: left_click - at (1234, 37)
+Step 16: left_click - at (1085, 749)
+Step 17: scroll - down by 3
+Step 18: left_click - at (496, 623)

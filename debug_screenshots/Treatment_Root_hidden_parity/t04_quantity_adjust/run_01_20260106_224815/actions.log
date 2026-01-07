@@ -1,0 +1,13 @@
+Step 01: screenshot - {'action': 'screenshot'}
+Step 02: left_click - at (640, 37)
+Step 03: type - 'acme cups...'
+Step 04: left_click - at (824, 37)
+Step 05: wait - {'action': 'wait', 'duration': 2}
+Step 06: scroll - down by 3
+Step 07: left_click - at (151, 37)
+Step 08: left_click - at (639, 226)
+Step 09: left_click - at (1028, 336)
+Step 10: left_click - at (1229, 150)
+Step 11: left_click - at (1169, 150)
+Step 12: left_click - at (1085, 750)
+Step 13: TASK_COMPLETE - Agent declared task complete

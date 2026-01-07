@@ -1,16 +1,20 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { Cart } from '../shopify/types';
 
-// Storage file location
-const STORAGE_DIR = join(process.cwd(), '.cart-storage');
-const STORAGE_FILE = join(STORAGE_DIR, 'carts.json');
-const ORDERS_FILE = join(STORAGE_DIR, 'orders.json');
+/**
+ * Per-session file storage for benchmark parallelism.
+ *
+ * Uses individual files per cart/order to eliminate cross-session contention:
+ *   .cart-storage/carts/{cartId}.json
+ *   .cart-storage/orders/{sessionId}.json
+ *
+ * Writes are atomic: write to temp file, then rename to final path.
+ */
 
-interface CartStorage {
-  carts: Record<string, Cart>;
-  lastUpdated: string;
-}
+const STORAGE_DIR = join(process.cwd(), '.cart-storage');
+const CARTS_DIR = join(STORAGE_DIR, 'carts');
+const ORDERS_DIR = join(STORAGE_DIR, 'orders');
 
 // Order structure for completed checkouts
 export interface CompletedOrder {
@@ -34,126 +38,167 @@ export interface CompletedOrder {
   completed_at: string;
 }
 
-interface OrderStorage {
-  orders: Record<string, CompletedOrder>;  // keyed by session/cart ID
-  lastUpdated: string;
-}
-
-function ensureStorageDir(): void {
-  if (!existsSync(STORAGE_DIR)) {
-    mkdirSync(STORAGE_DIR, { recursive: true });
+function ensureDir(dir: string): void {
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
   }
 }
 
-function readStorage(): CartStorage {
-  ensureStorageDir();
+function ensureStorageDirs(): void {
+  ensureDir(CARTS_DIR);
+  ensureDir(ORDERS_DIR);
+}
 
-  if (!existsSync(STORAGE_FILE)) {
-    return { carts: {}, lastUpdated: new Date().toISOString() };
-  }
-
+/**
+ * Atomic write: write to temp file then rename.
+ * This prevents partial writes from corrupting data during concurrent access.
+ */
+function atomicWriteJSON(filePath: string, data: unknown): void {
+  const tempPath = `${filePath}.${process.pid}.tmp`;
   try {
-    const data = readFileSync(STORAGE_FILE, 'utf-8');
-    return JSON.parse(data);
+    writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
+    renameSync(tempPath, filePath);
   } catch (error) {
-    console.error('Error reading cart storage:', error);
-    return { carts: {}, lastUpdated: new Date().toISOString() };
+    // Clean up temp file on error
+    try { unlinkSync(tempPath); } catch { /* ignore */ }
+    throw error;
   }
 }
 
-function writeStorage(storage: CartStorage): void {
-  ensureStorageDir();
-
-  try {
-    storage.lastUpdated = new Date().toISOString();
-    writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), 'utf-8');
-  } catch (error) {
-    console.error('Error writing cart storage:', error);
+function readJSON<T>(filePath: string): T | undefined {
+  if (!existsSync(filePath)) {
+    return undefined;
   }
+  try {
+    const data = readFileSync(filePath, 'utf-8');
+    return JSON.parse(data) as T;
+  } catch (error) {
+    console.error(`Error reading ${filePath}:`, error);
+    return undefined;
+  }
+}
+
+function safeFilename(id: string): string {
+  // Sanitize ID to be filesystem-safe (replace unsafe chars with underscore)
+  return id.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+// --- CART STORAGE ---
+
+function cartPath(cartId: string): string {
+  return join(CARTS_DIR, `${safeFilename(cartId)}.json`);
 }
 
 export function getStoredCart(cartId: string): Cart | undefined {
-  const storage = readStorage();
-  return storage.carts[cartId];
+  ensureStorageDirs();
+  return readJSON<Cart>(cartPath(cartId));
 }
 
 export function setStoredCart(cartId: string, cart: Cart): void {
-  const storage = readStorage();
-  storage.carts[cartId] = cart;
-  writeStorage(storage);
+  ensureStorageDirs();
+  atomicWriteJSON(cartPath(cartId), cart);
 }
 
 export function deleteStoredCart(cartId: string): void {
-  const storage = readStorage();
-  delete storage.carts[cartId];
-  writeStorage(storage);
+  ensureStorageDirs();
+  const path = cartPath(cartId);
+  if (existsSync(path)) {
+    try {
+      unlinkSync(path);
+    } catch (error) {
+      console.error(`Error deleting cart ${cartId}:`, error);
+    }
+  }
 }
 
 export function clearAllCarts(): void {
-  writeStorage({ carts: {}, lastUpdated: new Date().toISOString() });
+  ensureStorageDirs();
+  try {
+    const files = readdirSync(CARTS_DIR);
+    for (const file of files) {
+      if (file.endsWith('.json')) {
+        unlinkSync(join(CARTS_DIR, file));
+      }
+    }
+  } catch (error) {
+    console.error('Error clearing carts:', error);
+  }
 }
 
 export function getAllCartIds(): string[] {
-  const storage = readStorage();
-  return Object.keys(storage.carts);
+  ensureStorageDirs();
+  try {
+    const files = readdirSync(CARTS_DIR);
+    return files
+      .filter(f => f.endsWith('.json'))
+      .map(f => f.replace('.json', ''));
+  } catch {
+    return [];
+  }
 }
 
 // --- ORDER STORAGE ---
 
-function readOrderStorage(): OrderStorage {
-  ensureStorageDir();
-
-  if (!existsSync(ORDERS_FILE)) {
-    return { orders: {}, lastUpdated: new Date().toISOString() };
-  }
-
-  try {
-    const data = readFileSync(ORDERS_FILE, 'utf-8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error reading order storage:', error);
-    return { orders: {}, lastUpdated: new Date().toISOString() };
-  }
-}
-
-function writeOrderStorage(storage: OrderStorage): void {
-  ensureStorageDir();
-
-  try {
-    storage.lastUpdated = new Date().toISOString();
-    writeFileSync(ORDERS_FILE, JSON.stringify(storage, null, 2), 'utf-8');
-  } catch (error) {
-    console.error('Error writing order storage:', error);
-  }
+function orderPath(sessionId: string): string {
+  return join(ORDERS_DIR, `${safeFilename(sessionId)}.json`);
 }
 
 export function saveCompletedOrder(sessionId: string, order: CompletedOrder): void {
-  const storage = readOrderStorage();
-  storage.orders[sessionId] = order;
-  writeOrderStorage(storage);
+  ensureStorageDirs();
+  atomicWriteJSON(orderPath(sessionId), order);
 }
 
 export function getCompletedOrder(sessionId: string): CompletedOrder | undefined {
-  const storage = readOrderStorage();
-  return storage.orders[sessionId];
+  ensureStorageDirs();
+  return readJSON<CompletedOrder>(orderPath(sessionId));
+}
+
+export function deleteCompletedOrder(sessionId: string): void {
+  ensureStorageDirs();
+  const path = orderPath(sessionId);
+  if (existsSync(path)) {
+    try {
+      unlinkSync(path);
+    } catch (error) {
+      console.error(`Error deleting order ${sessionId}:`, error);
+    }
+  }
 }
 
 export function clearAllOrders(): void {
-  writeOrderStorage({ orders: {}, lastUpdated: new Date().toISOString() });
-}
-
-export function deleteCompletedOrder(cartId: string): void {
-  const storage = readOrderStorage();
-  delete storage.orders[cartId];
-  writeOrderStorage(storage);
+  ensureStorageDirs();
+  try {
+    const files = readdirSync(ORDERS_DIR);
+    for (const file of files) {
+      if (file.endsWith('.json')) {
+        unlinkSync(join(ORDERS_DIR, file));
+      }
+    }
+  } catch (error) {
+    console.error('Error clearing orders:', error);
+  }
 }
 
 export function getLastCompletedOrder(): CompletedOrder | undefined {
-  const storage = readOrderStorage();
-  const orders = Object.values(storage.orders);
-  if (orders.length === 0) return undefined;
-  // Return the most recently completed order
-  return orders.sort((a, b) =>
-    new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime()
-  )[0];
+  ensureStorageDirs();
+  try {
+    const files = readdirSync(ORDERS_DIR);
+    let latestOrder: CompletedOrder | undefined;
+    let latestTime = 0;
+
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const order = readJSON<CompletedOrder>(join(ORDERS_DIR, file));
+      if (order?.completed_at) {
+        const time = new Date(order.completed_at).getTime();
+        if (time > latestTime) {
+          latestTime = time;
+          latestOrder = order;
+        }
+      }
+    }
+    return latestOrder;
+  } catch {
+    return undefined;
+  }
 }

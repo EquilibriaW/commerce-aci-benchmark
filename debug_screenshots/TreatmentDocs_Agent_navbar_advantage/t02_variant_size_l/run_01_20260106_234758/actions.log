@@ -1,0 +1,11 @@
+Step 01: screenshot - {'action': 'screenshot'}
+Step 02: left_click - at (46, 196)
+Step 03: left_click - at (985, 316)
+Step 04: left_click - at (1028, 433)
+Step 05: left_click - at (1085, 750)
+Step 06: scroll - down by 3
+Step 07: left_click - at (496, 623)
+Step 08: type - 'customer@example.com...'
+Step 09: left_click - at (783, 623)
+Step 10: type - 'John Customer...'
+Step 11: left_click - at (640, 688)

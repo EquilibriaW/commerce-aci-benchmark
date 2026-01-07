@@ -1,6 +1,26 @@
 import { getProduct } from 'lib/shopify';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
+import { Metadata } from 'next';
+
+// Dynamic metadata based on product
+export async function generateMetadata({
+  params
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const product = await getProduct(slug);
+
+  if (!product) {
+    return { title: 'Product Not Found' };
+  }
+
+  return {
+    title: `ACI // ${product.handle}`,
+    robots: 'noindex'
+  };
+}
 
 export default async function AgentProductPage({
   params
@@ -22,138 +42,132 @@ export default async function AgentProductPage({
   }
 
   return (
-    <html lang="en">
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="robots" content="noindex" />
-        <title>ACI // {product.handle}</title>
-        <style dangerouslySetInnerHTML={{ __html: `
-          * { box-sizing: border-box; }
-          body {
-            font-family: 'Courier New', Courier, monospace;
-            background: #ffffff;
-            color: #000000;
-            margin: 0;
-            padding: 20px;
-            font-size: 14px;
-            line-height: 1.4;
-          }
-          .header {
-            border: 2px solid #000;
-            padding: 10px 15px;
-            margin-bottom: 20px;
-            background: #f0f0f0;
-          }
-          .header h1 {
-            margin: 0;
-            font-size: 16px;
-            font-weight: bold;
-          }
-          nav {
-            border: 1px solid #000;
-            padding: 8px 12px;
-            margin-bottom: 20px;
-            background: #fafafa;
-          }
-          nav a {
-            color: #0000cc;
-            text-decoration: underline;
-            margin-right: 20px;
-          }
-          nav a:hover { color: #000099; }
-          .section {
-            border: 1px solid #000;
-            margin-bottom: 20px;
-          }
-          .section-header {
-            background: #000;
-            color: #fff;
-            padding: 6px 12px;
-            font-weight: bold;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-          }
-          .section-body {
-            padding: 12px;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-          }
-          th, td {
-            border: 1px solid #000;
-            padding: 8px 10px;
-            text-align: left;
-          }
-          th {
-            background: #e0e0e0;
-            font-weight: bold;
-            text-transform: uppercase;
-            font-size: 11px;
-            letter-spacing: 0.5px;
-            width: 25%;
-          }
-          tr:hover { background: #ffffcc; }
-          .variant-table th {
-            width: auto;
-          }
-          .action-box {
-            border: 2px solid #000;
-            padding: 15px;
-            background: #ffffd0;
-            margin-top: 15px;
-          }
-          .action-box h3 {
-            margin: 0 0 10px 0;
-            font-size: 14px;
-            text-transform: uppercase;
-          }
-          .form-row {
-            margin-bottom: 10px;
-          }
-          .form-row label {
-            display: inline-block;
-            width: 100px;
-            font-weight: bold;
-          }
-          select, input[type="number"] {
-            font-family: 'Courier New', Courier, monospace;
-            padding: 6px 10px;
-            border: 1px solid #000;
-            font-size: 13px;
-          }
-          .btn-execute {
-            display: inline-block;
-            background: #000;
-            color: #fff;
-            padding: 10px 20px;
-            text-decoration: none;
-            font-weight: bold;
-            font-size: 14px;
-            border: 2px solid #000;
-            cursor: pointer;
-            font-family: 'Courier New', Courier, monospace;
-            margin-top: 10px;
-          }
-          .btn-execute:hover {
-            background: #333;
-          }
-          .footer {
-            border-top: 2px solid #000;
-            padding-top: 10px;
-            margin-top: 20px;
-            font-size: 11px;
-            color: #666;
-          }
-          .footer a {
-            color: #0000cc;
-          }
-        `}} />
-      </head>
-      <body>
+    <>
+      <style dangerouslySetInnerHTML={{ __html: `
+        .agent-product * { box-sizing: border-box; }
+        .agent-product {
+          font-family: 'Courier New', Courier, monospace;
+          background: #ffffff;
+          color: #000000;
+          padding: 20px;
+          font-size: 14px;
+          line-height: 1.4;
+        }
+        .agent-product .header {
+          border: 2px solid #000;
+          padding: 10px 15px;
+          margin-bottom: 20px;
+          background: #f0f0f0;
+        }
+        .agent-product .header h1 {
+          margin: 0;
+          font-size: 16px;
+          font-weight: bold;
+        }
+        .agent-product nav {
+          border: 1px solid #000;
+          padding: 8px 12px;
+          margin-bottom: 20px;
+          background: #fafafa;
+        }
+        .agent-product nav a {
+          color: #0000cc;
+          text-decoration: underline;
+          margin-right: 20px;
+        }
+        .agent-product nav a:hover { color: #000099; }
+        .agent-product .section {
+          border: 1px solid #000;
+          margin-bottom: 20px;
+        }
+        .agent-product .section-header {
+          background: #000;
+          color: #fff;
+          padding: 6px 12px;
+          font-weight: bold;
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+        .agent-product .section-body {
+          padding: 12px;
+        }
+        .agent-product table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 13px;
+        }
+        .agent-product th, .agent-product td {
+          border: 1px solid #000;
+          padding: 8px 10px;
+          text-align: left;
+        }
+        .agent-product th {
+          background: #e0e0e0;
+          font-weight: bold;
+          text-transform: uppercase;
+          font-size: 11px;
+          letter-spacing: 0.5px;
+          width: 25%;
+        }
+        .agent-product tr:hover { background: #ffffcc; }
+        .agent-product .variant-table th {
+          width: auto;
+        }
+        .agent-product .action-box {
+          border: 2px solid #000;
+          padding: 15px;
+          background: #ffffd0;
+          margin-top: 15px;
+        }
+        .agent-product .action-box h3 {
+          margin: 0 0 10px 0;
+          font-size: 14px;
+          text-transform: uppercase;
+        }
+        .agent-product .form-row {
+          margin-bottom: 10px;
+        }
+        .agent-product .form-row label {
+          display: inline-block;
+          width: 100px;
+          font-weight: bold;
+        }
+        .agent-product select, .agent-product input[type="number"] {
+          font-family: 'Courier New', Courier, monospace;
+          padding: 6px 10px;
+          border: 1px solid #000;
+          font-size: 13px;
+        }
+        .agent-product .btn-execute {
+          display: inline-block;
+          background: #000;
+          color: #fff;
+          padding: 10px 20px;
+          text-decoration: none;
+          font-weight: bold;
+          font-size: 14px;
+          border: 2px solid #000;
+          cursor: pointer;
+          font-family: 'Courier New', Courier, monospace;
+          margin-top: 10px;
+        }
+        .agent-product .btn-execute:hover {
+          background: #333;
+        }
+        .agent-product .footer {
+          border-top: 2px solid #000;
+          padding-top: 10px;
+          margin-top: 20px;
+          font-size: 11px;
+          color: #666;
+        }
+        .agent-product .footer a {
+          color: #0000cc;
+        }
+      `}} />
+
+      <div className="agent-product">
         <div className="header">
           <h1>ACI // PRODUCT: {product.handle.toUpperCase()}</h1>
         </div>
@@ -284,7 +298,7 @@ export default async function AgentProductPage({
           <a href="/agent">[ RETURN TO DASHBOARD ]</a>
           <div>Session: {new Date().toISOString()}</div>
         </div>
-      </body>
-    </html>
+      </div>
+    </>
   );
 }

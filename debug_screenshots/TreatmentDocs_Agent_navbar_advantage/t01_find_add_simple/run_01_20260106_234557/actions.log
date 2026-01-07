@@ -1,0 +1,8 @@
+Step 01: screenshot - {'action': 'screenshot'}
+Step 02: left_click - at (747, 196)
+Step 03: left_click - at (110, 201)
+Step 04: type - 'John Doe...'
+Step 05: left_click - at (276, 201)
+Step 06: key - ''
+Step 07: type - 'john.doe@email.com...'
+Step 08: left_click - at (422, 201)

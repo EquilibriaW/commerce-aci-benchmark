@@ -18,6 +18,7 @@ import base64
 import os
 import sys
 import json
+import random
 import statistics
 import time
 from datetime import datetime
@@ -30,7 +31,7 @@ if sys.stderr.encoding != 'utf-8':
 from pathlib import Path
 from typing import Optional
 
-from anthropic import Anthropic
+from anthropic import Anthropic, APIError, APIConnectionError, RateLimitError
 from playwright.async_api import async_playwright, Page, Browser
 from pydantic import BaseModel
 from rich.console import Console
@@ -50,6 +51,13 @@ DISPLAY_HEIGHT = 800
 
 MAX_ITERATIONS = 18
 RUNS_PER_TASK = 1
+
+# Retry configuration for API calls
+MAX_API_RETRIES = 5          # Maximum retry attempts before failing
+INITIAL_BACKOFF_S = 1.0      # Initial backoff in seconds
+MAX_BACKOFF_S = 60.0         # Maximum backoff in seconds
+BACKOFF_MULTIPLIER = 2.0     # Exponential backoff multiplier
+JITTER_FACTOR = 0.25         # Random jitter factor (0-1)
 
 # Debug settings
 DEBUG_SCREENSHOTS = True
@@ -246,43 +254,87 @@ class ComputerUseAgent:
     def _truncate_history(self):
         """Truncate conversation history while preserving initial prompt.
 
-        Keeps the initial user message (with task instruction) and the last
-        MAX_HISTORY_CYCLES complete interaction cycles. Only truncates whole
-        assistant+user pairs to avoid breaking tool_use/tool_result pairings.
+        Keeps the initial user message (with task instruction) and removes
+        complete interaction cycles from the front. A cycle is defined as:
+        - An assistant message (possibly containing tool_use)
+        - Followed by a user message (possibly containing tool_result)
+
+        Never breaks tool_use/tool_result pairings. Scans from the end to
+        identify complete cycles rather than assuming fixed message lengths.
         """
         if len(self.conversation_history) <= 1:
             return
 
         messages_after_initial = self.conversation_history[1:]
 
-        # We want to keep at most MAX_HISTORY_CYCLES * 2 messages after initial
+        # We want to keep at most MAX_HISTORY_CYCLES complete cycles
+        # Each cycle is typically assistant + user (2 messages)
         max_messages = self.MAX_HISTORY_CYCLES * 2
 
         if len(messages_after_initial) <= max_messages:
             return
 
-        # Find how many to remove (must be even to keep assistant+user pairs intact)
-        to_remove = len(messages_after_initial) - max_messages
-        to_remove = (to_remove // 2) * 2  # Round down to even
+        # Scan backwards to find complete cycles
+        # A complete cycle ends with: assistant message (with or without tool_use)
+        # followed by user message (with or without tool_result)
+        remaining = list(messages_after_initial)
 
-        if to_remove > 0:
-            remaining = messages_after_initial[to_remove:]
+        while len(remaining) > max_messages:
+            # Check if we can safely remove the first message(s)
+            if len(remaining) < 2:
+                break
 
-            # Safety check: ensure we don't start with a user message containing tool_result
-            # (which would be orphaned without the preceding assistant tool_use)
-            while remaining and remaining[0].get("role") == "user":
-                content = remaining[0].get("content", [])
-                has_tool_result = any(
+            first = remaining[0]
+            second = remaining[1] if len(remaining) > 1 else None
+
+            # Check if first message is assistant with tool_use
+            first_has_tool_use = False
+            if first.get("role") == "assistant":
+                content = first.get("content", [])
+                first_has_tool_use = any(
+                    isinstance(c, dict) and c.get("type") == "tool_use"
+                    for c in (content if isinstance(content, list) else [])
+                )
+
+            # Check if second message is user with tool_result
+            second_has_tool_result = False
+            if second and second.get("role") == "user":
+                content = second.get("content", [])
+                second_has_tool_result = any(
                     isinstance(c, dict) and c.get("type") == "tool_result"
                     for c in (content if isinstance(content, list) else [])
                 )
+
+            # If assistant has tool_use, we must remove both messages together
+            if first_has_tool_use:
+                if second_has_tool_result:
+                    # Safe to remove the pair
+                    remaining = remaining[2:]
+                else:
+                    # tool_use without matching tool_result - shouldn't happen,
+                    # but if it does, just remove the assistant message
+                    remaining = remaining[1:]
+            elif first.get("role") == "assistant":
+                # Assistant without tool_use - safe to remove just this one
+                remaining = remaining[1:]
+            elif first.get("role") == "user":
+                # User message at the start
+                first_content = first.get("content", [])
+                has_tool_result = any(
+                    isinstance(c, dict) and c.get("type") == "tool_result"
+                    for c in (first_content if isinstance(first_content, list) else [])
+                )
                 if has_tool_result:
-                    # Remove this orphaned tool_result message
+                    # Orphaned tool_result - remove it
                     remaining = remaining[1:]
                 else:
-                    break
+                    # Regular user message - safe to remove
+                    remaining = remaining[1:]
+            else:
+                # Unknown role - just remove it
+                remaining = remaining[1:]
 
-            self.conversation_history = [self.conversation_history[0]] + remaining
+        self.conversation_history = [self.conversation_history[0]] + remaining
 
     async def run_step(self, instruction: str) -> tuple[str, bool]:
         """
@@ -358,11 +410,17 @@ class ComputerUseAgent:
                 self._truncate_history()
 
         # Call Claude with computer use - use system= parameter
+        # Bounded retry with exponential backoff + jitter
         response = None
-        while response is None:
+        last_error = None
+        backoff = INITIAL_BACKOFF_S
+
+        for attempt in range(MAX_API_RETRIES):
             try:
                 self.model_calls += 1
-                response = self.client.messages.create(
+                # Run sync API call in a thread to avoid blocking the event loop
+                response = await asyncio.to_thread(
+                    self.client.messages.create,
                     model="claude-sonnet-4-5-20250929",
                     max_tokens=4096,
                     system=SYSTEM_PROMPT,
@@ -378,16 +436,50 @@ class ComputerUseAgent:
                     ],
                     messages=self.conversation_history
                 )
-            except Exception as e:
-                error_str = str(e).lower()
-                if "rate_limit" in error_str:
-                    console.print("    [yellow]Rate limited, waiting 60s...[/yellow]")
-                    await asyncio.sleep(60)
-                elif "500" in str(e) or "internal" in error_str:
-                    console.print("    [yellow]API 500 error, retrying in 10s...[/yellow]")
-                    await asyncio.sleep(10)
+                break  # Success - exit retry loop
+
+            except RateLimitError as e:
+                # Transient - retry with backoff
+                last_error = e
+                jitter = backoff * JITTER_FACTOR * random.random()
+                wait_time = min(backoff + jitter, MAX_BACKOFF_S)
+                console.print(f"    [yellow]Rate limited (attempt {attempt + 1}/{MAX_API_RETRIES}), waiting {wait_time:.1f}s...[/yellow]")
+                await asyncio.sleep(wait_time)
+                backoff = min(backoff * BACKOFF_MULTIPLIER, MAX_BACKOFF_S)
+
+            except APIConnectionError as e:
+                # Network error - retry with backoff
+                last_error = e
+                jitter = backoff * JITTER_FACTOR * random.random()
+                wait_time = min(backoff + jitter, MAX_BACKOFF_S)
+                console.print(f"    [yellow]Connection error (attempt {attempt + 1}/{MAX_API_RETRIES}), waiting {wait_time:.1f}s...[/yellow]")
+                await asyncio.sleep(wait_time)
+                backoff = min(backoff * BACKOFF_MULTIPLIER, MAX_BACKOFF_S)
+
+            except APIError as e:
+                last_error = e
+                status = getattr(e, 'status_code', None)
+                if status and 500 <= status < 600:
+                    # Server error - retry with backoff
+                    jitter = backoff * JITTER_FACTOR * random.random()
+                    wait_time = min(backoff + jitter, MAX_BACKOFF_S)
+                    console.print(f"    [yellow]API {status} error (attempt {attempt + 1}/{MAX_API_RETRIES}), waiting {wait_time:.1f}s...[/yellow]")
+                    await asyncio.sleep(wait_time)
+                    backoff = min(backoff * BACKOFF_MULTIPLIER, MAX_BACKOFF_S)
                 else:
+                    # Client error (4xx except rate limit) - fail fast
+                    console.print(f"    [red]API error {status}: {e}[/red]")
                     raise
+
+            except Exception as e:
+                # Unknown error - fail fast with actionable log
+                console.print(f"    [red]Unexpected error: {type(e).__name__}: {e}[/red]")
+                raise
+
+        if response is None:
+            # Exhausted all retries
+            console.print(f"    [red]Failed after {MAX_API_RETRIES} retries. Last error: {last_error}[/red]")
+            raise last_error or Exception("API call failed after max retries")
 
         # Process response - handle multiple tool_use blocks
         assistant_content = []

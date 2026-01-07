@@ -1,0 +1,18 @@
+Step 01: left_click - at (639, 277)
+Step 02: left_click - at (150, 37)
+Step 03: left_click - at (956, 226)
+Step 04: left_click - at (1028, 336)
+Step 05: left_click - at (930, 106)
+Step 06: left_click - at (1234, 45)
+Step 07: left_click - at (150, 37)
+Step 08: left_click - at (322, 226)
+Step 09: left_click - at (926, 316)
+Step 10: left_click - at (1028, 433)
+Step 11: left_click - at (1234, 37)
+Step 12: left_click - at (1085, 750)
+Step 13: scroll - down by 3
+Step 14: left_click - at (496, 623)
+Step 15: key - ''
+Step 16: type - 'test@example.com...'
+Step 17: left_click - at (783, 623)
+Step 18: type - 'Test User...'

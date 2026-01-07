@@ -1,0 +1,12 @@
+Step 01: screenshot - {'action': 'screenshot'}
+Step 02: triple_click - {'action': 'triple_click', 'coordinate': [650, 229
+Step 03: type - '2...'
+Step 04: left_click - at (709, 229)
+Step 05: left_click - at (709, 344)
+Step 06: left_click - at (422, 232)
+Step 07: left_click - at (118, 232)
+Step 08: triple_click - {'action': 'triple_click', 'coordinate': [118, 232
+Step 09: type - 'John Smith...'
+Step 10: triple_click - {'action': 'triple_click', 'coordinate': [276, 232
+Step 11: type - 'john.smith@example.com...'
+Step 12: left_click - at (422, 232)
