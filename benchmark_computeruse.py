@@ -29,7 +29,7 @@ if sys.stdout.encoding != 'utf-8':
 if sys.stderr.encoding != 'utf-8':
     sys.stderr.reconfigure(encoding='utf-8')
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 from anthropic import Anthropic, APIError, APIConnectionError, RateLimitError
 from playwright.async_api import async_playwright, Page, Browser
@@ -180,9 +180,18 @@ class ComputerUseAgent:
     # Max conversation cycles to keep (preserve initial prompt, truncate older cycles)
     MAX_HISTORY_CYCLES = 5
 
-    def __init__(self, page: Page, api_key: str, debug_dir: Optional[Path] = None):
+    def __init__(self, page: Page, api_key: Optional[str] = None, debug_dir: Optional[Path] = None):
+        """Create a computer-use agent.
+
+        Args:
+            page: Playwright page to control.
+            api_key: Anthropic API key. If None/empty, the agent can still be used
+                for deterministic *replay execution* (re-running recorded UI actions)
+                but cannot call the LLM.
+            debug_dir: Optional directory for saving debug artifacts.
+        """
         self.page = page
-        self.client = Anthropic(api_key=api_key)
+        self.client = Anthropic(api_key=api_key) if api_key else None
         self.conversation_history = []
         self.initial_prompt = None  # Store the initial user prompt (preserved across truncation)
         self.entered_agent_view = False
@@ -193,6 +202,15 @@ class ComputerUseAgent:
         self.ui_actions = 0   # Number of real UI actions (clicks/drag/type/key/scroll)
         self.debug_dir = debug_dir
         self.action_log = []
+
+        # Structured trace ("VCR for agents"). Written to trace.json at end of run.
+        # This is intentionally lightweight: screenshots are stored as files and
+        # referenced by path to avoid huge JSON blobs.
+        self.trace: dict[str, Any] = {
+            "schema_version": "trace.v1",
+            "meta": {},
+            "steps": []
+        }
 
         # Track network requests to /agent/actions
         self.page.on("request", self._handle_request)
@@ -207,12 +225,17 @@ class ComputerUseAgent:
         screenshot_b64 = base64.standard_b64encode(screenshot_bytes).decode("utf-8")
         return screenshot_b64, screenshot_bytes
 
-    def _save_debug_screenshot(self, screenshot_bytes: bytes, step: int, suffix: str = ""):
-        """Save screenshot to debug directory."""
+    def _save_debug_screenshot(self, screenshot_bytes: bytes, step: int, suffix: str = "") -> Optional[str]:
+        """Save screenshot to debug directory.
+
+        Returns the saved path as a string, or None if debug_dir is not set.
+        """
         if self.debug_dir:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
             screenshot_path = self.debug_dir / f"step_{step:02d}{suffix}.png"
             screenshot_path.write_bytes(screenshot_bytes)
+            return str(screenshot_path)
+        return None
 
     def _log_action(self, step: int, action: str, details: str):
         """Log an action for debugging."""
@@ -336,11 +359,14 @@ class ComputerUseAgent:
 
         self.conversation_history = [self.conversation_history[0]] + remaining
 
-    async def run_step(self, instruction: str) -> tuple[str, bool]:
+    async def run_step(self, instruction: str, extra_user_text: Optional[str] = None) -> tuple[str, bool]:
         """
         Run one step of the agent loop.
         Returns (action_taken, is_done).
         """
+        if self.client is None:
+            raise RuntimeError("ComputerUseAgent has no Anthropic client. Provide ANTHROPIC_API_KEY for LLM execution.")
+
         self.step_count += 1
 
         # Check if we're in agent view (track first adoption step)
@@ -363,18 +389,45 @@ class ComputerUseAgent:
 
         # Always take and save a debug screenshot at the start of each step
         screenshot_b64, screenshot_bytes = await self.take_screenshot()
-        self._save_debug_screenshot(screenshot_bytes, self.step_count)
+        pre_path = self._save_debug_screenshot(screenshot_bytes, self.step_count, suffix="_pre")
+
+        step_trace: dict[str, Any] = {
+            "step": self.step_count,
+            "page_url": self.page.url,
+            "timestamp": datetime.now().isoformat(),
+            "user_extra": extra_user_text,
+            "observation": {
+                "screenshot_path": pre_path,
+                "display_width": DISPLAY_WIDTH,
+                "display_height": DISPLAY_HEIGHT,
+            },
+            "assistant": {
+                "text": None,
+                "tool_uses": []
+            },
+            "tool_results": []
+        }
+
+        if last_was_tool_result and extra_user_text:
+            # If the last user message was already a tool_result (includes screenshot), we still
+            # want to inject a user utterance (e.g., adversarial fuzzing) as a separate message.
+            self.conversation_history.append({
+                "role": "user",
+                "content": [{"type": "text", "text": extra_user_text}]
+            })
+            self._truncate_history()
 
         if not last_was_tool_result:
             # Build messages - use system parameter for system prompt
             if not self.conversation_history:
                 # First message - task instruction + screenshot
+                extra = f"\n\nUSER UPDATE: {extra_user_text}" if extra_user_text else ""
                 self.initial_prompt = {
                     "role": "user",
                     "content": [
                         {
                             "type": "text",
-                            "text": f"TASK: {instruction}\n\nHere is the current state of the webpage:"
+                            "text": f"TASK: {instruction}{extra}\n\nHere is the current state of the webpage:"
                         },
                         {
                             "type": "image",
@@ -389,12 +442,13 @@ class ComputerUseAgent:
                 self.conversation_history = [self.initial_prompt]
             else:
                 # Follow-up message with new screenshot (only if last wasn't tool_result)
+                prefix = f"USER UPDATE: {extra_user_text}\n\n" if extra_user_text else ""
                 self.conversation_history.append({
                     "role": "user",
                     "content": [
                         {
                             "type": "text",
-                            "text": "Here is the current state of the page after your last action. Continue with the task or say TASK_COMPLETE if done."
+                            "text": prefix + "Here is the current state of the page after your last action. Continue with the task or say TASK_COMPLETE if done."
                         },
                         {
                             "type": "image",
@@ -487,9 +541,11 @@ class ComputerUseAgent:
         action_taken = "none"
         is_done = False
 
+        assistant_text_chunks: list[str] = []
         for block in response.content:
             if block.type == "text":
                 assistant_content.append({"type": "text", "text": block.text})
+                assistant_text_chunks.append(block.text)
                 if "TASK_COMPLETE" in block.text.upper():
                     is_done = True
                     action_taken = "TASK_COMPLETE"
@@ -504,6 +560,8 @@ class ComputerUseAgent:
                 })
                 tool_uses.append(block)
 
+        step_trace["assistant"]["text"] = "\n".join(assistant_text_chunks) if assistant_text_chunks else None
+
         # Add assistant message first (contains all tool_use blocks)
         self.conversation_history.append({
             "role": "assistant",
@@ -513,7 +571,7 @@ class ComputerUseAgent:
         # Execute all tool_uses sequentially and collect results
         if tool_uses:
             tool_results = []
-            for block in tool_uses:
+            for action_idx, block in enumerate(tool_uses, start=1):
                 # Log the action
                 action_type = block.input.get('action', 'unknown')
                 coord = block.input.get('coordinate', [0, 0])
@@ -537,9 +595,21 @@ class ComputerUseAgent:
                 else:
                     self._log_action(self.step_count, action_type, str(block.input)[:50])
 
+                step_trace["assistant"]["tool_uses"].append({
+                    "tool_use_id": block.id,
+                    "name": block.name,
+                    "input": block.input
+                })
+
                 # Execute the computer action
-                tool_result = await self._execute_computer_action(block.input)
+                tool_result, post_path, result_text = await self._execute_computer_action(block.input, action_index=action_idx)
                 action_taken = action_type
+
+                step_trace["tool_results"].append({
+                    "tool_use_id": block.id,
+                    "result_text": result_text,
+                    "screenshot_path": post_path
+                })
 
                 tool_results.append({
                     "type": "tool_result",
@@ -553,9 +623,12 @@ class ComputerUseAgent:
                 "content": tool_results
             })
 
+        # Persist trace step
+        self.trace["steps"].append(step_trace)
+
         return action_taken, is_done
 
-    async def _execute_computer_action(self, action_input: dict) -> list:
+    async def _execute_computer_action(self, action_input: dict, action_index: int = 1) -> tuple[list, Optional[str], str]:
         """Execute a computer use action and return result with screenshot.
 
         Returns a list of content blocks including text result and new screenshot.
@@ -675,10 +748,10 @@ class ComputerUseAgent:
         # CRITICAL: Take new screenshot after action so Claude sees the result
         screenshot_b64, screenshot_bytes = await self.take_screenshot()
 
-        # Save post-action screenshot for debugging
-        self._save_debug_screenshot(screenshot_bytes, self.step_count, suffix="_action")
+        # Save post-action screenshot for debugging (unique per action)
+        post_path = self._save_debug_screenshot(screenshot_bytes, self.step_count, suffix=f"_action_{action_index:02d}")
 
-        return [
+        content = [
             {"type": "text", "text": result_text},
             {
                 "type": "image",
@@ -689,6 +762,13 @@ class ComputerUseAgent:
                 }
             }
         ]
+
+        return content, post_path, result_text
+
+    def export_trace(self, meta: dict[str, Any]) -> dict[str, Any]:
+        """Return a structured trace payload suitable for saving to JSON."""
+        self.trace["meta"] = meta
+        return self.trace
 
 
 async def run_trial(
@@ -781,6 +861,26 @@ async def run_trial(
             log_path = debug_dir / "actions.log"
             log_path.write_text("\n".join(agent.action_log))
 
+            # Save structured trace for deterministic replay + counterfactual analysis
+            trace_path = debug_dir / "trace.json"
+            trace_meta = {
+                "run_timestamp": run_timestamp,
+                "condition_name": condition_name,
+                "task_id": task.get("id"),
+                "task_instruction": task.get("instruction"),
+                "target_url": target_url,
+                "api_url": api_url,
+                "discoverability": discoverability,
+                "capability": capability,
+                "model": "claude-sonnet-4-5-20250929",
+                "anthropic_beta": "computer-use-2025-01-24",
+                "display_width": DISPLAY_WIDTH,
+                "display_height": DISPLAY_HEIGHT,
+                "max_iterations": MAX_ITERATIONS,
+                "system_prompt": SYSTEM_PROMPT,
+            }
+            trace_path.write_text(json.dumps(agent.export_trace(trace_meta), indent=2))
+
         await browser.close()
 
         return {
@@ -793,7 +893,8 @@ async def run_trial(
             "ui_actions": agent.ui_actions,
             "wall_time_seconds": round(wall_time_seconds, 2),
             "forced_agent_start": forced_agent_start,
-            "action_log": agent.action_log
+            "action_log": agent.action_log,
+            "trace_path": str((debug_dir / "trace.json")) if debug_dir else None
         }
 
 

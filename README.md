@@ -143,6 +143,56 @@ Results are saved to `benchmark_results/computeruse_YYYYMMDD_HHMMSS.json`:
 
 Debug screenshots are saved to `debug_screenshots/{condition}/{task}/run_{n}/`.
 
+### New: Structured Trace Artifacts ("VCR for agents")
+
+Each run now also writes a `trace.json` into the same debug folder. This trace:
+
+- records the **full trajectory** (step-by-step screenshots, LLM tool calls, tool results)
+- enables **deterministic replay** of UI actions
+- enables **counterfactual testing** on a frozen observation sequence
+
+This is intentionally lightweight: screenshots are saved as files and referenced by path
+in the JSON so the trace doesn't become huge.
+
+### Replay a Trace (Reproduce Failures)
+
+Re-execute a run's recorded UI actions (no LLM call required):
+
+```bash
+python replay_trace.py --trace debug_screenshots/.../trace.json --mode reexecute
+```
+
+### Counterfactual "Shadow" Replay
+
+Run a different model/prompt against the same recorded screenshots and compare
+action agreement / divergence:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+python replay_trace.py --trace debug_screenshots/.../trace.json --mode shadow \
+  --model claude-sonnet-4-5-20250929 \
+  --system-prompt-file my_system_prompt.txt
+```
+
+This writes a `counterfactual_*.json` report next to the trace.
+
+---
+
+## New: Adversarial Flow Fuzzing (Chaos Testing for Agents)
+
+Most AgentOps stacks still rely on *static evaluation sets*. `flow_fuzz.py` adds a prototype
+"chaos monkey" that injects perturbations (intent shift, info overload, tool injection)
+at a specified turn, then measures robustness.
+
+```bash
+python flow_fuzz.py --app treatment --discoverability navbar --capability advantage \
+  --turns 3,4,5 --runs-per-scenario 1
+```
+
+Outputs:
+- `benchmark_results/fuzz_<timestamp>.json`
+- `benchmark_results/fuzz_<timestamp>_heatmap.png`
+
 ---
 
 # Customization Guide
