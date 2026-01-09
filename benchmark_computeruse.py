@@ -17,6 +17,7 @@ import asyncio
 import base64
 import os
 import sys
+import argparse
 import json
 import random
 import statistics
@@ -180,7 +181,7 @@ class ComputerUseAgent:
     # Max conversation cycles to keep (preserve initial prompt, truncate older cycles)
     MAX_HISTORY_CYCLES = 5
 
-    def __init__(self, page: Page, api_key: Optional[str] = None, debug_dir: Optional[Path] = None):
+    def __init__(self, page: Page, api_key: Optional[str] = None, debug_dir: Optional[Path] = None, system_prompt: str = SYSTEM_PROMPT):
         """Create a computer-use agent.
 
         Args:
@@ -202,6 +203,7 @@ class ComputerUseAgent:
         self.ui_actions = 0   # Number of real UI actions (clicks/drag/type/key/scroll)
         self.debug_dir = debug_dir
         self.action_log = []
+        self.system_prompt = system_prompt
 
         # Structured trace ("VCR for agents"). Written to trace.json at end of run.
         # This is intentionally lightweight: screenshots are stored as files and
@@ -391,13 +393,27 @@ class ComputerUseAgent:
         screenshot_b64, screenshot_bytes = await self.take_screenshot()
         pre_path = self._save_debug_screenshot(screenshot_bytes, self.step_count, suffix="_pre")
 
+        # The screenshot actually visible to the model for this step depends on the
+        # message structure. If the last message was a tool_result (which already includes
+        # a screenshot), we do NOT attach a new screenshot message; in that case the model
+        # sees the previous step's last tool_result screenshot. For replay/counterfactual
+        # correctness, record that as the observation screenshot.
+        prompt_obs_path = pre_path
+        if last_was_tool_result and self.trace["steps"]:
+            prev = self.trace["steps"][-1]
+            prev_tool_results = prev.get("tool_results") or []
+            last_img = (prev_tool_results[-1].get("screenshot_path") if prev_tool_results else None)
+            if last_img:
+                prompt_obs_path = last_img
+
         step_trace: dict[str, Any] = {
             "step": self.step_count,
             "page_url": self.page.url,
             "timestamp": datetime.now().isoformat(),
             "user_extra": extra_user_text,
             "observation": {
-                "screenshot_path": pre_path,
+                "screenshot_path": prompt_obs_path,
+                "debug_screenshot_path": pre_path,
                 "display_width": DISPLAY_WIDTH,
                 "display_height": DISPLAY_HEIGHT,
             },
@@ -477,7 +493,7 @@ class ComputerUseAgent:
                     self.client.messages.create,
                     model="claude-sonnet-4-5-20250929",
                     max_tokens=4096,
-                    system=SYSTEM_PROMPT,
+                    system=self.system_prompt,
                     extra_headers={"anthropic-beta": "computer-use-2025-01-24"},
                     tools=[
                         {
@@ -778,7 +794,8 @@ async def run_trial(
     condition_name: str,
     run_num: int,
     discoverability: str = "navbar",
-    capability: str = "advantage"
+    capability: str = "advantage",
+    system_prompt: str = SYSTEM_PROMPT
 ) -> dict:
     """Run a single trial of a task.
 
@@ -820,7 +837,7 @@ async def run_trial(
         )
 
         page = await context.new_page()
-        agent = ComputerUseAgent(page, ANTHROPIC_API_KEY, debug_dir=debug_dir)
+        agent = ComputerUseAgent(page, ANTHROPIC_API_KEY, debug_dir=debug_dir, system_prompt=system_prompt)
 
         # Reset session with experimental factors
         await agent.reset_session(api_url, discoverability=discoverability, capability=capability)
@@ -877,7 +894,7 @@ async def run_trial(
                 "display_width": DISPLAY_WIDTH,
                 "display_height": DISPLAY_HEIGHT,
                 "max_iterations": MAX_ITERATIONS,
-                "system_prompt": SYSTEM_PROMPT,
+                "system_prompt": agent.system_prompt,
             }
             trace_path.write_text(json.dumps(agent.export_trace(trace_meta), indent=2))
 
@@ -898,7 +915,7 @@ async def run_trial(
         }
 
 
-async def main():
+async def main(args: argparse.Namespace):
     """Run the full benchmark."""
     if not ANTHROPIC_API_KEY:
         console.print("[red]ERROR: ANTHROPIC_API_KEY environment variable is required[/red]")
@@ -1035,12 +1052,59 @@ async def main():
         },
     ]
 
+
+    # --- CLI filtering / configuration ---
+    system_prompt = SYSTEM_PROMPT
+    if getattr(args, "system_prompt_file", None):
+        try:
+            system_prompt = Path(args.system_prompt_file).read_text(encoding="utf-8")
+        except Exception as e:
+            console.print(f"[red]ERROR: Failed to read --system-prompt-file: {e}[/red]")
+            return
+
+    selected_conditions = list(CONDITIONS)
+    if getattr(args, "app", "all") != "all":
+        selected_conditions = [c for c in selected_conditions if c.get("app") == args.app]
+
+    if getattr(args, "start", "all") != "all":
+        want_agent = (args.start == "agent")
+        selected_conditions = [c for c in selected_conditions if ("/agent" in str(c.get("target_url", ""))) == want_agent]
+
+    if getattr(args, "discoverability", "all") != "all":
+        selected_conditions = [c for c in selected_conditions if c.get("discoverability") == args.discoverability]
+
+    if getattr(args, "capability", "all") != "all":
+        selected_conditions = [c for c in selected_conditions if c.get("capability") == args.capability]
+
+    if not selected_conditions:
+        console.print("[red]ERROR: No conditions matched the provided filters.[/red]")
+        return
+
+    tasks_to_run = list(TASKS)
+    if getattr(args, "tasks", "all") != "all":
+        requested = [t.strip() for t in str(args.tasks).split(",") if t.strip()]
+        requested_set = set(requested)
+        tasks_to_run = [t for t in TASKS if t.get("id") in requested_set]
+        missing = requested_set - {t.get("id") for t in tasks_to_run}
+        if missing:
+            console.print(f"[yellow]Warning: unknown task ids ignored: {', '.join(sorted(missing))}[/yellow]")
+        if not tasks_to_run:
+            console.print("[red]ERROR: No tasks matched --tasks filter.[/red]")
+            return
+
+    runs_per_task = int(getattr(args, "runs_per_task", RUNS_PER_TASK))
+    if runs_per_task < 1:
+        console.print("[red]ERROR: --runs-per-task must be >= 1[/red]")
+        return
+
+    CONDITIONS = selected_conditions
+
     console.rule("[bold]Commerce ACI Benchmark - Claude Computer Use[/bold]")
     console.print(f"Model: claude-sonnet-4-5-20250929")
     console.print(f"Beta: computer-use-2025-01-24")
     console.print(f"Display: {DISPLAY_WIDTH}x{DISPLAY_HEIGHT}")
     console.print(f"Max iterations: {MAX_ITERATIONS}")
-    console.print(f"Runs per task: {RUNS_PER_TASK}")
+    console.print(f"Runs per task: {runs_per_task}")
     console.print(f"Conditions: {len(CONDITIONS)}")
     console.print(f"Debug screenshots: {DEBUG_DIR}")
     console.print()
@@ -1048,8 +1112,8 @@ async def main():
     for cond in CONDITIONS:
         console.rule(f"[cyan]{cond['name']}[/cyan]")
 
-        for task in TASKS:
-            for run_num in range(RUNS_PER_TASK):
+        for task in tasks_to_run:
+            for run_num in range(runs_per_task):
                 try:
                     res = await run_trial(
                         task,
@@ -1058,7 +1122,8 @@ async def main():
                         cond["name"],
                         run_num + 1,
                         discoverability=cond["discoverability"],
-                        capability=cond["capability"]
+                        capability=cond["capability"],
+                        system_prompt=system_prompt
                     )
                     results.append({
                         **res,
@@ -1319,7 +1384,7 @@ async def main():
             "display_width": DISPLAY_WIDTH,
             "display_height": DISPLAY_HEIGHT,
             "max_iterations": MAX_ITERATIONS,
-            "runs_per_task": RUNS_PER_TASK,
+            "runs_per_task": runs_per_task,
             "treatment_url": URL_TREATMENT,
             "treatment_docs_url": URL_TREATMENT_DOCS,
             "baseline_url": URL_BASELINE,
@@ -1340,6 +1405,25 @@ async def main():
     console.print(f"\n[green]Results saved to: {output_file}[/green]")
     console.print(f"[green]Debug screenshots saved to: {DEBUG_DIR}[/green]")
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Commerce ACI Benchmark - Claude Computer Use")
+    parser.add_argument("--app", choices=["all", "baseline", "treatment", "treatment-docs"], default="all",
+                        help="Which app/UI to run (default: all)")
+    parser.add_argument("--start", choices=["all", "root", "agent"], default="all",
+                        help="Entry point: root or /agent (default: all)")
+    parser.add_argument("--discoverability", choices=["all", "navbar", "hidden"], default="all",
+                        help="Agent UI link discoverability (treatment apps only)")
+    parser.add_argument("--capability", choices=["all", "advantage", "parity"], default="all",
+                        help="Agent capability mode (treatment apps only)")
+    parser.add_argument("--tasks", type=str, default="all",
+                        help="Comma-separated task ids to run (default: all)")
+    parser.add_argument("--runs-per-task", type=int, default=RUNS_PER_TASK,
+                        help="Number of runs per task (default: RUNS_PER_TASK constant)")
+    parser.add_argument("--system-prompt-file", type=str, default=None,
+                        help="Optional path to a system prompt override (applies to the agent policy)")
+    return parser.parse_args()
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    args = parse_args()
+    asyncio.run(main(args))

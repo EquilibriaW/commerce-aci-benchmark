@@ -218,23 +218,33 @@ async def shadow_counterfactual(
     predicted_actions: list[dict[str, Any]] = []
     original_actions: list[dict[str, Any]] = []
 
+    prev_had_tool_use = False
+
     # Iterate through recorded steps and replay observations.
     for i, step in enumerate(steps, start=1):
         if max_steps and i > max_steps:
             break
 
-        # For steps > 1, append the recorded observation (pre-screenshot)
-        if i > 1:
+        # For steps > 1, optionally inject user perturbations and/or provide a new observation.
+        # In the original benchmark loop, once the agent emits tool_use blocks, the next call is
+        # made immediately after a tool_result message (which already contains a screenshot).
+        # To avoid duplicating screenshots (which can change behavior), we only attach a fresh
+        # screenshot observation when the *previous counterfactual step* did NOT emit tool_use.
+        if i >= 1:
+            extra = step.get("user_extra")
+            if extra:
+                messages.append({
+                    "role": "user",
+                    "content": [{"type": "text", "text": extra}],
+                })
+
+        if i > 1 and (not prev_had_tool_use):
             obs_path = (step.get("observation") or {}).get("screenshot_path")
             if obs_path:
-                prefix = ""
-                extra = step.get("user_extra")
-                if extra:
-                    prefix = f"USER UPDATE: {extra}\n\n"
                 messages.append({
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": prefix + "Here is the current state of the page after your last action. Continue with the task or say TASK_COMPLETE if done."},
+                        {"type": "text", "text": "Here is the current state of the page. Continue with the task or say TASK_COMPLETE if done."},
                         {
                             "type": "image",
                             "source": {"type": "base64", "media_type": "image/png", "data": _b64_png(obs_path)}
@@ -242,7 +252,7 @@ async def shadow_counterfactual(
                     ],
                 })
 
-        # Call model
+# Call model
         response = await asyncio.to_thread(
             client.messages.create,
             model=model,
@@ -279,6 +289,8 @@ async def shadow_counterfactual(
                 })
 
         messages.append({"role": "assistant", "content": assistant_content})
+
+        prev_had_tool_use = bool(tool_uses)
 
         # Record predicted vs original first action signature at this step
         predicted_first = _action_signature(tool_uses[0]["input"]) if tool_uses else None

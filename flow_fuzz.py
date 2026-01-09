@@ -187,6 +187,7 @@ async def run_fuzz_trial(
     run_num: int,
     discoverability: str,
     capability: str,
+    system_prompt: str = SYSTEM_PROMPT,
 ) -> dict[str, Any]:
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY environment variable is required")
@@ -211,7 +212,7 @@ async def run_fuzz_trial(
             user_agent="CommerceACIBenchmark/Fuzz/1.0",
         )
         page = await context.new_page()
-        agent = ComputerUseAgent(page, api_key=ANTHROPIC_API_KEY, debug_dir=debug_dir)
+        agent = ComputerUseAgent(page, api_key=ANTHROPIC_API_KEY, debug_dir=debug_dir, system_prompt=system_prompt)
 
         await agent.reset_session(api_url, discoverability=discoverability, capability=capability)
         await page.goto(target_url)
@@ -272,7 +273,7 @@ async def run_fuzz_trial(
                 "display_width": DISPLAY_WIDTH,
                 "display_height": DISPLAY_HEIGHT,
                 "max_iterations": MAX_ITERATIONS,
-                "system_prompt": SYSTEM_PROMPT,
+                "system_prompt": agent.system_prompt,
             }
             trace_path.write_text(json.dumps(agent.export_trace(trace_meta), indent=2), encoding="utf-8")
 
@@ -345,7 +346,12 @@ async def main_async() -> None:
     parser.add_argument("--start", choices=["root", "agent"], default="root")
     parser.add_argument("--runs-per-scenario", type=int, default=1)
     parser.add_argument("--turns", type=str, default="3,4,5", help="Comma-separated injection turns")
+    parser.add_argument("--system-prompt-file", type=str, default=None, help="Optional system prompt override")
     args = parser.parse_args()
+
+    system_prompt = SYSTEM_PROMPT
+    if args.system_prompt_file:
+        system_prompt = Path(args.system_prompt_file).read_text(encoding="utf-8")
 
     if not ANTHROPIC_API_KEY:
         console.print("[red]ERROR: ANTHROPIC_API_KEY environment variable is required[/red]")
@@ -383,6 +389,7 @@ async def main_async() -> None:
                     run_num=r,
                     discoverability=args.discoverability,
                     capability=args.capability,
+                    system_prompt=system_prompt,
                 )
             except Exception as e:
                 res = {
