@@ -22,6 +22,7 @@ import json
 import random
 import statistics
 import time
+import uuid
 from datetime import datetime
 
 # Ensure UTF-8 output
@@ -181,7 +182,15 @@ class ComputerUseAgent:
     # Max conversation cycles to keep (preserve initial prompt, truncate older cycles)
     MAX_HISTORY_CYCLES = 5
 
-    def __init__(self, page: Page, api_key: Optional[str] = None, debug_dir: Optional[Path] = None, system_prompt: str = SYSTEM_PROMPT):
+    # Supported models
+    SUPPORTED_MODELS = {
+        "sonnet": "claude-sonnet-4-5-20250929",
+        "haiku": "claude-3-5-haiku-20241022",
+    }
+    DEFAULT_MODEL = "sonnet"
+
+    def __init__(self, page: Page, api_key: Optional[str] = None, debug_dir: Optional[Path] = None,
+                 system_prompt: str = SYSTEM_PROMPT, model: str = DEFAULT_MODEL):
         """Create a computer-use agent.
 
         Args:
@@ -190,6 +199,8 @@ class ComputerUseAgent:
                 for deterministic *replay execution* (re-running recorded UI actions)
                 but cannot call the LLM.
             debug_dir: Optional directory for saving debug artifacts.
+            system_prompt: System prompt for the agent.
+            model: Model to use - "sonnet" (claude-sonnet-4-5) or "haiku" (claude-haiku-3-5).
         """
         self.page = page
         self.client = Anthropic(api_key=api_key) if api_key else None
@@ -204,12 +215,19 @@ class ComputerUseAgent:
         self.debug_dir = debug_dir
         self.action_log = []
         self.system_prompt = system_prompt
+        # Resolve model name to full model ID
+        self.model = self.SUPPORTED_MODELS.get(model, model)
 
         # Structured trace ("VCR for agents"). Written to trace.json at end of run.
         # This is intentionally lightweight: screenshots are stored as files and
         # referenced by path to avoid huge JSON blobs.
+        # Schema v2 supports branching fields (parent_trace_id, intervention, etc.)
         self.trace: dict[str, Any] = {
-            "schema_version": "trace.v1",
+            "schema_version": "trace.v2",
+            "trace_id": str(uuid.uuid4()),
+            "parent_trace_id": None,  # Set when creating branches
+            "branch_point_step": None,  # Step number where branch diverged
+            "intervention": None,  # Intervention applied at branch point
             "meta": {},
             "steps": []
         }
@@ -489,12 +507,19 @@ class ComputerUseAgent:
             try:
                 self.model_calls += 1
                 # Run sync API call in a thread to avoid blocking the event loop
+                # Use prompt caching for the system prompt (cache_control with ephemeral type)
                 response = await asyncio.to_thread(
                     self.client.messages.create,
-                    model="claude-sonnet-4-5-20250929",
+                    model=self.model,
                     max_tokens=4096,
-                    system=self.system_prompt,
-                    extra_headers={"anthropic-beta": "computer-use-2025-01-24"},
+                    system=[
+                        {
+                            "type": "text",
+                            "text": self.system_prompt,
+                            "cache_control": {"type": "ephemeral"}
+                        }
+                    ],
+                    extra_headers={"anthropic-beta": "computer-use-2025-01-24,prompt-caching-2024-07-31"},
                     tools=[
                         {
                             "type": "computer_20250124",
@@ -782,7 +807,16 @@ class ComputerUseAgent:
         return content, post_path, result_text
 
     def export_trace(self, meta: dict[str, Any]) -> dict[str, Any]:
-        """Return a structured trace payload suitable for saving to JSON."""
+        """Return a structured trace payload suitable for saving to JSON.
+
+        The trace uses schema v2 which includes:
+        - trace_id: Unique identifier for this trace
+        - parent_trace_id: ID of parent trace (for branches)
+        - branch_point_step: Step where branch diverged (for branches)
+        - intervention: Intervention applied at branch point (for branches)
+        """
+        # Include trace_id in meta for easier access
+        meta["trace_id"] = self.trace["trace_id"]
         self.trace["meta"] = meta
         return self.trace
 
@@ -795,7 +829,8 @@ async def run_trial(
     run_num: int,
     discoverability: str = "navbar",
     capability: str = "advantage",
-    system_prompt: str = SYSTEM_PROMPT
+    system_prompt: str = SYSTEM_PROMPT,
+    model: str = ComputerUseAgent.DEFAULT_MODEL
 ) -> dict:
     """Run a single trial of a task.
 
@@ -807,6 +842,8 @@ async def run_trial(
         run_num: Run number (1-indexed)
         discoverability: "navbar" or "hidden" - controls agent UI visibility
         capability: "advantage" or "parity" - controls agent actions
+        system_prompt: System prompt for the agent
+        model: Model to use - "sonnet" or "haiku"
     """
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY environment variable is required")
@@ -837,7 +874,7 @@ async def run_trial(
         )
 
         page = await context.new_page()
-        agent = ComputerUseAgent(page, ANTHROPIC_API_KEY, debug_dir=debug_dir, system_prompt=system_prompt)
+        agent = ComputerUseAgent(page, ANTHROPIC_API_KEY, debug_dir=debug_dir, system_prompt=system_prompt, model=model)
 
         # Reset session with experimental factors
         await agent.reset_session(api_url, discoverability=discoverability, capability=capability)
@@ -889,8 +926,8 @@ async def run_trial(
                 "api_url": api_url,
                 "discoverability": discoverability,
                 "capability": capability,
-                "model": "claude-sonnet-4-5-20250929",
-                "anthropic_beta": "computer-use-2025-01-24",
+                "model": agent.model,
+                "anthropic_beta": "computer-use-2025-01-24,prompt-caching-2024-07-31",
                 "display_width": DISPLAY_WIDTH,
                 "display_height": DISPLAY_HEIGHT,
                 "max_iterations": MAX_ITERATIONS,
@@ -1080,28 +1117,45 @@ async def main(args: argparse.Namespace):
         console.print("[red]ERROR: No conditions matched the provided filters.[/red]")
         return
 
-    tasks_to_run = list(TASKS)
-    if getattr(args, "tasks", "all") != "all":
-        requested = [t.strip() for t in str(args.tasks).split(",") if t.strip()]
-        requested_set = set(requested)
-        tasks_to_run = [t for t in TASKS if t.get("id") in requested_set]
-        missing = requested_set - {t.get("id") for t in tasks_to_run}
-        if missing:
-            console.print(f"[yellow]Warning: unknown task ids ignored: {', '.join(sorted(missing))}[/yellow]")
-        if not tasks_to_run:
-            console.print("[red]ERROR: No tasks matched --tasks filter.[/red]")
-            return
+    # Handle custom instruction (ad-hoc task) vs predefined tasks
+    custom_instruction = getattr(args, "instruction", None)
+    if custom_instruction:
+        # Create an ad-hoc task with no verifier (runs until agent says done or max iterations)
+        from datetime import datetime
+        adhoc_id = f"custom_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        tasks_to_run = [{
+            "id": adhoc_id,
+            "instruction": custom_instruction,
+            "verifier": lambda s: False  # Never auto-pass; rely on agent's TASK_COMPLETE
+        }]
+        console.print(f"[cyan]Running ad-hoc task: {custom_instruction[:60]}{'...' if len(custom_instruction) > 60 else ''}[/cyan]")
+    else:
+        tasks_to_run = list(TASKS)
+        if getattr(args, "tasks", "all") != "all":
+            requested = [t.strip() for t in str(args.tasks).split(",") if t.strip()]
+            requested_set = set(requested)
+            tasks_to_run = [t for t in TASKS if t.get("id") in requested_set]
+            missing = requested_set - {t.get("id") for t in tasks_to_run}
+            if missing:
+                console.print(f"[yellow]Warning: unknown task ids ignored: {', '.join(sorted(missing))}[/yellow]")
+            if not tasks_to_run:
+                console.print("[red]ERROR: No tasks matched --tasks filter.[/red]")
+                return
 
     runs_per_task = int(getattr(args, "runs_per_task", RUNS_PER_TASK))
     if runs_per_task < 1:
         console.print("[red]ERROR: --runs-per-task must be >= 1[/red]")
         return
 
+    # Get model from args
+    model = getattr(args, "model", "sonnet")
+    model_full_name = ComputerUseAgent.SUPPORTED_MODELS.get(model, model)
+
     CONDITIONS = selected_conditions
 
     console.rule("[bold]Commerce ACI Benchmark - Claude Computer Use[/bold]")
-    console.print(f"Model: claude-sonnet-4-5-20250929")
-    console.print(f"Beta: computer-use-2025-01-24")
+    console.print(f"Model: {model_full_name} ({model})")
+    console.print(f"Beta: computer-use-2025-01-24,prompt-caching-2024-07-31")
     console.print(f"Display: {DISPLAY_WIDTH}x{DISPLAY_HEIGHT}")
     console.print(f"Max iterations: {MAX_ITERATIONS}")
     console.print(f"Runs per task: {runs_per_task}")
@@ -1123,7 +1177,8 @@ async def main(args: argparse.Namespace):
                         run_num + 1,
                         discoverability=cond["discoverability"],
                         capability=cond["capability"],
-                        system_prompt=system_prompt
+                        system_prompt=system_prompt,
+                        model=model
                     )
                     results.append({
                         **res,
@@ -1378,8 +1433,8 @@ async def main(args: argparse.Namespace):
     output_data = {
         "run_id": run_id,
         "timestamp": datetime.now().isoformat(),
-        "model": "claude-sonnet-4-5-20250929",
-        "beta": "computer-use-2025-01-24",
+        "model": model_full_name,
+        "beta": "computer-use-2025-01-24,prompt-caching-2024-07-31",
         "config": {
             "display_width": DISPLAY_WIDTH,
             "display_height": DISPLAY_HEIGHT,
@@ -1421,6 +1476,10 @@ def parse_args() -> argparse.Namespace:
                         help="Number of runs per task (default: RUNS_PER_TASK constant)")
     parser.add_argument("--system-prompt-file", type=str, default=None,
                         help="Optional path to a system prompt override (applies to the agent policy)")
+    parser.add_argument("--instruction", type=str, default=None,
+                        help="Custom instruction/goal for ad-hoc runs (overrides --tasks)")
+    parser.add_argument("--model", type=str, choices=["sonnet", "haiku"], default="sonnet",
+                        help="Model to use: sonnet (claude-sonnet-4-5) or haiku (claude-haiku-3-5). Default: sonnet")
     return parser.parse_args()
 
 

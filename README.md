@@ -178,6 +178,133 @@ This writes a `counterfactual_*.json` report next to the trace.
 
 ---
 
+## New: Trace Trees & Counterfactual Branching
+
+The benchmark now includes a **git-like trace branching system** for counterfactual analysis. This allows you to:
+
+- Import any trace as the root of a tree
+- Create branches at any step with different interventions
+- Test "what if" scenarios (different prompts, models, or forced actions)
+- Compare outcomes across branches
+
+### Creating a Trace Tree
+
+```python
+from trace_tree import TraceTree
+
+# Import an existing trace as root
+tree = TraceTree.create_from_existing_trace(
+    trace_path="debug_screenshots/Treatment_Root/custom_123/trace.json",
+    trees_dir="debug_screenshots/trees",
+    description="Testing checkout flow variations"
+)
+
+print(f"Created tree: {tree.tree_id}")
+```
+
+### Creating Branches with Interventions
+
+```python
+from trace_tree import TraceTree, Intervention, InterventionType
+from branch_executor import BranchExecutionConfig, run_branch_sync
+
+# Load existing tree
+tree = TraceTree(tree_id="abc12345", trees_dir="debug_screenshots/trees")
+
+# Create a branch with a prompt intervention at step 5
+intervention = Intervention(
+    type=InterventionType.PROMPT_INSERT,
+    prompt_text="IMPORTANT: Use the /agent page for faster task completion."
+)
+
+config = BranchExecutionConfig(
+    tree=tree,
+    parent_trace_id=tree.get_root().trace_id,
+    branch_point_step=5,
+    intervention=intervention,
+    label="Prompt nudge at step 5"
+)
+
+result = run_branch_sync(config)
+print(f"Branch success: {result.success}, steps: {result.steps_count}")
+```
+
+### Intervention Types
+
+| Type | Description | Parameters |
+|------|-------------|------------|
+| `PROMPT_INSERT` | Inject text into the user message at branch point | `prompt_text` |
+| `MODEL_SWAP` | Switch to a different model from the branch point | `model` (sonnet/haiku) |
+| `TOOL_OVERRIDE` | Force a specific action at the branch point | `forced_action` dict |
+
+### Using the Control Panel
+
+The **AgentOps Control Panel** provides a visual interface for trace trees:
+
+```bash
+streamlit run control_panel.py
+```
+
+Features:
+- **Run Launcher**: Execute benchmark tasks or custom goals
+- **Trace Viewer**: Step-by-step inspection with screenshots
+- **Trace Trees**: Interactive DAG visualization, create branches, compare outcomes
+
+---
+
+## New: Server Manager
+
+The `server_manager.py` module automatically manages Next.js dev servers:
+
+```python
+from server_manager import get_server_manager
+
+manager = get_server_manager()
+
+# Start a server (waits for health check)
+if manager.start_server("treatment", wait_ready=True, timeout=60):
+    print("Server ready!")
+    url = manager.get_url("treatment")  # http://localhost:3000
+
+# Check status
+status = manager.get_status()
+# {"treatment": {"port": 3000, "healthy": True, ...}, ...}
+
+# Stop all servers on exit
+manager.stop_all()
+```
+
+---
+
+## New: Model Selection
+
+Choose between Claude Sonnet 4.5 (default) or Claude Haiku 3.5:
+
+```bash
+# Use Sonnet (default, more capable)
+python benchmark_computeruse.py --model sonnet
+
+# Use Haiku (faster, cheaper)
+python benchmark_computeruse.py --model haiku
+```
+
+---
+
+## New: Custom Instructions (Ad-hoc Tasks)
+
+Run one-off tasks without defining them in `TASKS`:
+
+```bash
+python benchmark_computeruse.py \
+    --instruction "Find the cheapest product and add it to cart" \
+    --app treatment \
+    --discoverability navbar
+```
+
+The agent runs until it declares `TASK_COMPLETE` or hits max iterations.
+
+---
+
 ## New: Adversarial Flow Fuzzing (Chaos Testing for Agents)
 
 Most AgentOps stacks still rely on *static evaluation sets*. `flow_fuzz.py` adds a prototype
@@ -446,16 +573,30 @@ commerce-aci-benchmark/
 ├── README.md                      # This file
 ├── benchmark_computeruse.py       # Main benchmark script (Claude Computer Use)
 ├── benchmark_science.py           # Alternative benchmark (OpenAI)
+├── control_panel.py               # Streamlit UI for trace viewing & branching
+├── replay_trace.py                # Trace replay and counterfactual shadow mode
+├── flow_fuzz.py                   # Adversarial flow fuzzing
 ├── requirements.txt               # Python dependencies
+│
+├── trace_tree.py                  # Git-like trace branching system
+├── branch_executor.py             # Hybrid replay-then-live execution
+├── server_manager.py              # Auto-manage Next.js dev servers
+├── tree_visualization.py          # DAG rendering for trace trees
 │
 ├── benchmark_results/             # JSON output files
 │   └── computeruse_YYYYMMDD_HHMMSS.json
 │
 ├── debug_screenshots/             # Debug screenshots per run
-│   └── {condition}/{task}/run_{n}/
-│       ├── step_01.png
-│       ├── step_02.png
-│       └── actions.log
+│   ├── {condition}/{task}/run_{n}/
+│   │   ├── step_01.png
+│   │   ├── step_02.png
+│   │   ├── trace.json
+│   │   └── actions.log
+│   └── trees/                     # Trace tree storage
+│       └── {tree_id}/
+│           ├── tree_index.json
+│           ├── root/
+│           └── branches/
 │
 ├── baseline/                      # Control: Standard e-commerce UI
 │   ├── app/
