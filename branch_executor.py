@@ -36,6 +36,7 @@ from playwright.async_api import async_playwright
 
 from trace_tree import TraceTree, Intervention, InterventionType
 from server_manager import ServerManager
+from trace_rehydrate import build_conversation_from_steps
 
 
 # Import from benchmark_computeruse - these are needed for execution
@@ -52,6 +53,18 @@ def _get_benchmark_imports():
     return ComputerUseAgent, DISPLAY_WIDTH, DISPLAY_HEIGHT, SYSTEM_PROMPT, ANTHROPIC_API_KEY, TASKS
 
 
+def trace_to_messages(trace: dict, up_to_step: int) -> list[dict]:
+    """Rebuild an Anthropic message list from trace steps up to a step index."""
+    meta = trace.get("meta") or {}
+    instruction = meta.get("task_instruction") or "Continue the task"
+    steps = trace.get("steps") or []
+    if up_to_step is None:
+        up_to_step = len(steps)
+    up_to_step = max(0, min(int(up_to_step), len(steps)))
+    trace_dir = trace.get("_trace_dir")
+    return build_conversation_from_steps(steps[:up_to_step], instruction=instruction, trace_dir=trace_dir)
+
+
 @dataclass
 class BranchExecutionConfig:
     """Configuration for a branch execution."""
@@ -62,6 +75,7 @@ class BranchExecutionConfig:
     headless: bool = True
     max_iterations: int = 18
     label: str = ""
+    rehydrate_conversation: bool = True
 
 
 @dataclass
@@ -221,6 +235,9 @@ class BranchExecutor:
 
         # Get system prompt
         system_prompt = meta.get("system_prompt", SYSTEM_PROMPT)
+        if config.intervention and config.intervention.type == InterventionType.GUIDANCE_PATCH:
+            if config.intervention.system_prompt:
+                system_prompt = config.intervention.system_prompt
 
         # Setup debug directory for new branch
         branch_info = config.tree._index.traces.get(new_trace_id, {})
@@ -271,6 +288,18 @@ class BranchExecutor:
 
                 await asyncio.sleep(0.3)
 
+            if config.rehydrate_conversation and replay_steps:
+                trace_dir = self._get_trace_dir(config.tree, config.parent_trace_id)
+                hydrate_trace = {
+                    "meta": meta,
+                    "steps": replay_steps,
+                    "_trace_dir": trace_dir,
+                }
+                messages = trace_to_messages(hydrate_trace, len(replay_steps))
+                agent.conversation_history = messages
+                if messages:
+                    agent.initial_prompt = messages[0]
+
             # === PHASE 3: Apply Intervention at Step N ===
             self._report_progress("Applying intervention...", total_replay_steps, total_replay_steps)
 
@@ -294,6 +323,9 @@ class BranchExecutor:
             forced_action = None
             if config.intervention.type == InterventionType.TOOL_OVERRIDE:
                 forced_action = config.intervention.forced_action
+
+            if config.intervention.type == InterventionType.GUIDANCE_PATCH and config.intervention.system_prompt:
+                agent.system_prompt = config.intervention.system_prompt
 
             # === PHASE 4: Live Execution from Step N ===
             instruction = meta.get("task_instruction", "Continue the task")
@@ -364,9 +396,17 @@ class BranchExecutor:
             "created_at": datetime.now().isoformat(),
             "model": agent.model,
         }
+        if config.intervention and config.intervention.type == InterventionType.GUIDANCE_PATCH:
+            if config.intervention.system_prompt:
+                trace_meta["system_prompt"] = config.intervention.system_prompt
+            if config.intervention.guidance_fragments is not None:
+                trace_meta["guidance_fragments"] = config.intervention.guidance_fragments
+            if config.intervention.guidance_patch is not None:
+                trace_meta["guidance_patch"] = config.intervention.guidance_patch
 
         trace_data = agent.export_trace(trace_meta)
         trace_data["schema_version"] = "trace.v2"
+        trace_data["trace_version"] = "v2"
         trace_data["trace_id"] = new_trace_id
         trace_data["parent_trace_id"] = config.parent_trace_id
         trace_data["branch_point_step"] = config.branch_point_step
@@ -394,6 +434,12 @@ class BranchExecutor:
         """Calculate branch depth by counting ancestors."""
         ancestors = tree.get_ancestors(trace_id)
         return len(ancestors)
+
+    def _get_trace_dir(self, tree: TraceTree, trace_id: str) -> Optional[Path]:
+        """Resolve the directory containing a trace's artifacts."""
+        info = tree._index.traces.get(trace_id, {})
+        trace_path = info.get("path")
+        return Path(trace_path) if trace_path else None
 
 
 def run_branch_sync(config: BranchExecutionConfig, progress_callback=None) -> BranchExecutionResult:

@@ -55,23 +55,13 @@ from benchmark_computeruse import (
     TASKS,
     ComputerUseAgent,
 )
+from trace_schema import validate_trace_v2
 
 
 def _load_trace(trace_path: Path) -> dict[str, Any]:
-    """Load a trace file, supporting both v1 and v2 schemas.
-
-    Schema v2 adds support for branching:
-    - trace_id: Unique identifier for this trace
-    - parent_trace_id: ID of parent trace (for branches)
-    - branch_point_step: Step where branch diverged (for branches)
-    - intervention: Intervention applied at branch point (for branches)
-    """
+    """Load a trace file and validate the trace.v2 ABI."""
     payload = json.loads(trace_path.read_text(encoding="utf-8"))
-    schema_version = payload.get("schema_version")
-    if schema_version not in ("trace.v1", "trace.v2"):
-        raise ValueError(f"Unsupported trace schema_version: {schema_version}")
-    if "meta" not in payload or "steps" not in payload:
-        raise ValueError("Invalid trace: missing meta/steps")
+    validate_trace_v2(payload)
     return payload
 
 

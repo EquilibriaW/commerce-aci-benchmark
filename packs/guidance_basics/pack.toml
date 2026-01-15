@@ -1,0 +1,11 @@
+[pack]
+id = "guidance_basics"
+name = "Guidance Basics"
+version = "0.1.0"
+description = "Simple guidance fragments to improve responsiveness."
+
+[[guidance]]
+id = "baseline_guidance"
+kind = "code"
+entrypoint = "guidance.py:baseline_guidance"
+description = "Basic operator guidance for safer, clearer interactions."

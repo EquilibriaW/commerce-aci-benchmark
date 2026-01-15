@@ -1,0 +1,49 @@
+{
+  "schema_version": "trace.v2",
+  "trace_version": "v2",
+  "meta": {
+    "task_instruction": "Buy me a large black T-shirt",
+    "system_prompt": "Test system prompt."
+  },
+  "steps": [
+    {
+      "step": 1,
+      "user_extra": null,
+      "observation": {
+        "screenshot_path": "fixtures/missing.png"
+      },
+      "assistant": {
+        "text": "I'll click the search bar.",
+        "tool_uses": [
+          {
+            "tool_use_id": "tool_1",
+            "name": "computer",
+            "input": {
+              "action": "left_click",
+              "coordinate": [10, 10]
+            }
+          }
+        ]
+      },
+      "tool_results": [
+        {
+          "tool_use_id": "tool_1",
+          "result_text": "Clicked search bar",
+          "screenshot_path": "fixtures/missing.png"
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "user_extra": "Actually, size M.",
+      "observation": {
+        "screenshot_path": "fixtures/missing.png"
+      },
+      "assistant": {
+        "text": "Acknowledged.",
+        "tool_uses": []
+      },
+      "tool_results": []
+    }
+  ]
+}

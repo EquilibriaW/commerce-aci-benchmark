@@ -23,6 +23,8 @@ import random
 import statistics
 import time
 import uuid
+import hashlib
+import tomllib
 from datetime import datetime
 
 # Ensure UTF-8 output
@@ -80,6 +82,19 @@ GUIDELINES:
 4. **Execution**: Use the computer tool to click coordinates, type text, or scroll.
 
 When the task is successfully completed, respond with "TASK_COMPLETE"."""
+
+ASK_USER_TAG = "ASK_USER:"
+
+
+def _extract_user_request(text: Optional[str]) -> Optional[str]:
+    if not text:
+        return None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(ASK_USER_TAG):
+            question = stripped[len(ASK_USER_TAG):].strip()
+            return question or None
+    return None
 
 # --- VERIFIABLE TASK SUITE ---
 # Benchmark products:
@@ -224,6 +239,7 @@ class ComputerUseAgent:
         # Schema v2 supports branching fields (parent_trace_id, intervention, etc.)
         self.trace: dict[str, Any] = {
             "schema_version": "trace.v2",
+            "trace_version": "v2",
             "trace_id": str(uuid.uuid4()),
             "parent_trace_id": None,  # Set when creating branches
             "branch_point_step": None,  # Step number where branch diverged
@@ -429,6 +445,7 @@ class ComputerUseAgent:
             "page_url": self.page.url,
             "timestamp": datetime.now().isoformat(),
             "user_extra": extra_user_text,
+            "prompt_hash": hashlib.sha256(self.system_prompt.encode("utf-8")).hexdigest(),
             "observation": {
                 "screenshot_path": prompt_obs_path,
                 "debug_screenshot_path": pre_path,
@@ -602,6 +619,11 @@ class ComputerUseAgent:
                 tool_uses.append(block)
 
         step_trace["assistant"]["text"] = "\n".join(assistant_text_chunks) if assistant_text_chunks else None
+        user_request = _extract_user_request(step_trace["assistant"]["text"])
+        if user_request:
+            step_trace["assistant_user_request"] = {"question": user_request, "tag": ASK_USER_TAG}
+            if action_taken == "none":
+                action_taken = "ask_user"
 
         # Add assistant message first (contains all tool_use blocks)
         self.conversation_history.append({
@@ -821,6 +843,13 @@ class ComputerUseAgent:
         return self.trace
 
 
+def _load_gate_policy(path: Optional[str]) -> dict[str, Any]:
+    if not path:
+        return {}
+    data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    return dict(data.get("policy") or data)
+
+
 async def run_trial(
     task: dict,
     target_url: str,
@@ -830,7 +859,8 @@ async def run_trial(
     discoverability: str = "navbar",
     capability: str = "advantage",
     system_prompt: str = SYSTEM_PROMPT,
-    model: str = ComputerUseAgent.DEFAULT_MODEL
+    model: str = ComputerUseAgent.DEFAULT_MODEL,
+    guidance_meta: Optional[dict[str, Any]] = None,
 ) -> dict:
     """Run a single trial of a task.
 
@@ -933,6 +963,8 @@ async def run_trial(
                 "max_iterations": MAX_ITERATIONS,
                 "system_prompt": agent.system_prompt,
             }
+            if guidance_meta:
+                trace_meta.update(guidance_meta)
             trace_path.write_text(json.dumps(agent.export_trace(trace_meta), indent=2))
 
         await browser.close()
@@ -1091,13 +1123,39 @@ async def main(args: argparse.Namespace):
 
 
     # --- CLI filtering / configuration ---
-    system_prompt = SYSTEM_PROMPT
+    base_prompt = SYSTEM_PROMPT
     if getattr(args, "system_prompt_file", None):
         try:
-            system_prompt = Path(args.system_prompt_file).read_text(encoding="utf-8")
+            base_prompt = Path(args.system_prompt_file).read_text(encoding="utf-8")
         except Exception as e:
             console.print(f"[red]ERROR: Failed to read --system-prompt-file: {e}[/red]")
             return
+
+    guidance_packs_raw = getattr(args, "guidance_packs", "")
+    guidance_packs = [p.strip() for p in str(guidance_packs_raw).split(",") if p.strip()]
+    guidance_fragments: list[str] = []
+    guidance_meta = None
+    if guidance_packs:
+        try:
+            from pack_api.loader import PackRegistry
+            from pack_api.runtime import assemble_system_prompt, load_guidance_fragments
+            registry = PackRegistry.discover()
+            guidance_fragments = load_guidance_fragments(registry, selected_guidance=guidance_packs)
+            system_prompt = assemble_system_prompt(base_prompt, guidance_fragments)
+        except Exception as e:
+            console.print(f"[red]ERROR: Failed to load guidance packs: {e}[/red]")
+            return
+    else:
+        system_prompt = base_prompt
+
+    if guidance_packs:
+        prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
+        guidance_meta = {
+            "base_system_prompt": base_prompt,
+            "guidance_packs": guidance_packs,
+            "guidance_fragments": guidance_fragments,
+            "guidance_prompt_hash": prompt_hash,
+        }
 
     selected_conditions = list(CONDITIONS)
     if getattr(args, "app", "all") != "all":
@@ -1142,6 +1200,16 @@ async def main(args: argparse.Namespace):
                 console.print("[red]ERROR: No tasks matched --tasks filter.[/red]")
                 return
 
+    gate_policy = _load_gate_policy(getattr(args, "gate_policy", None))
+    advisor_pack = str(getattr(args, "advisor_pack", "") or "")
+    advisor_id = str(getattr(args, "advisor_id", "") or "")
+    if advisor_pack and not advisor_id:
+        console.print("[red]ERROR: --advisor-id is required when using --advisor-pack[/red]")
+        return
+    if advisor_id and not advisor_pack:
+        console.print("[red]ERROR: --advisor-pack is required when using --advisor-id[/red]")
+        return
+
     runs_per_task = int(getattr(args, "runs_per_task", RUNS_PER_TASK))
     if runs_per_task < 1:
         console.print("[red]ERROR: --runs-per-task must be >= 1[/red]")
@@ -1178,7 +1246,8 @@ async def main(args: argparse.Namespace):
                         discoverability=cond["discoverability"],
                         capability=cond["capability"],
                         system_prompt=system_prompt,
-                        model=model
+                        model=model,
+                        guidance_meta=guidance_meta,
                     )
                     results.append({
                         **res,
@@ -1192,6 +1261,59 @@ async def main(args: argparse.Namespace):
 
                     status = "[green]PASS[/green]" if res['success'] else "[red]FAIL[/red]"
                     console.print(f"  {task['id']} | Run {run_num + 1} | {status} | Steps: {res['steps']}")
+
+                    eval_packs_raw = getattr(args, "eval_packs", "")
+                    eval_packs = [p.strip() for p in str(eval_packs_raw).split(",") if p.strip()]
+                    eval_output = getattr(args, "eval_output", "eval_results.json")
+                    trace_path_str = res.get("trace_path")
+                    if eval_packs and trace_path_str:
+                        try:
+                            from pack_api.loader import PackRegistry
+                            from pack_api.runtime import (
+                                gate_should_fail,
+                                run_evaluators_on_trace,
+                                suggest_guidance_patch,
+                                write_eval_results,
+                            )
+
+                            trace_path = Path(trace_path_str)
+                            trace = json.loads(trace_path.read_text(encoding="utf-8"))
+                            registry = PackRegistry.discover()
+                            eval_results = run_evaluators_on_trace(
+                                trace,
+                                selected_packs=eval_packs,
+                                registry=registry,
+                            )
+                            out_path = write_eval_results(
+                                trace_path,
+                                eval_results,
+                                out_path=trace_path.parent / eval_output,
+                                policy=gate_policy,
+                            )
+                            gate_failed = gate_should_fail(eval_results, gate_policy)
+                            gate_status = "FAIL" if gate_failed else "PASS"
+                            console.print(f"    Eval packs: {', '.join(eval_packs)} -> {out_path} ({gate_status})")
+
+                            if gate_failed and advisor_pack and advisor_id:
+                                try:
+                                    advisor_spec = registry.get_advisor_spec(advisor_pack, advisor_id)
+                                    advisor_fn = registry.load_advisor(advisor_pack, advisor_id)
+                                    patch = suggest_guidance_patch(
+                                        advisor_fn,
+                                        trace,
+                                        eval_results,
+                                        config=advisor_spec.default_config,
+                                    )
+                                    if patch:
+                                        patch_path = trace_path.parent / "guidance_patch.json"
+                                        patch_path.write_text(json.dumps(patch.__dict__, indent=2), encoding="utf-8")
+                                        console.print(f"    Guidance patch: {patch_path}")
+                                    else:
+                                        console.print("    Guidance patch: skipped")
+                                except Exception as e:
+                                    console.print(f"[yellow]Warning: advisor failed: {e}[/yellow]")
+                        except Exception as e:
+                            console.print(f"[yellow]Warning: evaluator run failed: {e}[/yellow]")
 
                 except Exception as e:
                     import traceback
@@ -1476,10 +1598,22 @@ def parse_args() -> argparse.Namespace:
                         help="Number of runs per task (default: RUNS_PER_TASK constant)")
     parser.add_argument("--system-prompt-file", type=str, default=None,
                         help="Optional path to a system prompt override (applies to the agent policy)")
+    parser.add_argument("--guidance-packs", type=str, default="",
+                        help="Comma-separated guidance pack IDs to append to the system prompt")
     parser.add_argument("--instruction", type=str, default=None,
                         help="Custom instruction/goal for ad-hoc runs (overrides --tasks)")
     parser.add_argument("--model", type=str, choices=["sonnet", "haiku"], default="sonnet",
                         help="Model to use: sonnet (claude-sonnet-4-5) or haiku (claude-haiku-3-5). Default: sonnet")
+    parser.add_argument("--eval-packs", type=str, default="",
+                        help="Comma-separated pack IDs to evaluate traces after each run")
+    parser.add_argument("--eval-output", type=str, default="eval_results.json",
+                        help="Eval results filename to write next to trace.json")
+    parser.add_argument("--gate-policy", type=str, default="",
+                        help="Optional TOML policy file for evaluator gating")
+    parser.add_argument("--advisor-pack", type=str, default="",
+                        help="Optional advisor pack ID to suggest guidance patches on gate failure")
+    parser.add_argument("--advisor-id", type=str, default="",
+                        help="Advisor ID within the advisor pack")
     return parser.parse_args()
 
 

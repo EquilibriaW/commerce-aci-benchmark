@@ -1,0 +1,12 @@
+[pack]
+id = "advisor_guidance_patch"
+name = "Advisor Guidance Patch"
+version = "0.1.0"
+description = "LLM advisor that proposes guidance patches from failing traces."
+
+[[advisors]]
+id = "suggest_patch"
+kind = "llm"
+entrypoint = "advisor.py:suggest_patch"
+description = "Suggest guidance fragments to address observed evaluator failures."
+default_config = { model = "claude-3-5-haiku-20241022", max_fragments = 3, base_guidance_id = "guidance_basics:baseline_guidance" }

@@ -35,6 +35,7 @@ class InterventionType(Enum):
     PROMPT_INSERT = "prompt_insert"
     MODEL_SWAP = "model_swap"
     TOOL_OVERRIDE = "tool_override"
+    GUIDANCE_PATCH = "guidance_patch"
 
 
 @dataclass
@@ -44,6 +45,9 @@ class Intervention:
     prompt_text: Optional[str] = None      # For PROMPT_INSERT
     model: Optional[str] = None            # For MODEL_SWAP
     forced_action: Optional[dict] = None   # For TOOL_OVERRIDE
+    system_prompt: Optional[str] = None    # For GUIDANCE_PATCH
+    guidance_fragments: Optional[list[str]] = None  # For GUIDANCE_PATCH
+    guidance_patch: Optional[dict] = None  # For GUIDANCE_PATCH
 
     def to_dict(self) -> dict:
         return {
@@ -51,6 +55,9 @@ class Intervention:
             "prompt_text": self.prompt_text,
             "model": self.model,
             "forced_action": self.forced_action,
+            "system_prompt": self.system_prompt,
+            "guidance_fragments": self.guidance_fragments,
+            "guidance_patch": self.guidance_patch,
         }
 
     @classmethod
@@ -62,6 +69,9 @@ class Intervention:
             prompt_text=d.get("prompt_text"),
             model=d.get("model"),
             forced_action=d.get("forced_action"),
+            system_prompt=d.get("system_prompt"),
+            guidance_fragments=d.get("guidance_fragments"),
+            guidance_patch=d.get("guidance_patch"),
         )
 
 
@@ -193,6 +203,7 @@ class TraceTree:
 
         # Upgrade trace to v2 schema
         trace_data["schema_version"] = cls.SCHEMA_VERSION
+        trace_data["trace_version"] = "v2"
         trace_data["trace_id"] = trace_id
         trace_data["parent_trace_id"] = None
         trace_data["branch_point_step"] = None

@@ -88,6 +88,11 @@ export default function MobileMenu({ menu }: { menu: Menu[] }) {
                         [Agent Interface]
                       </Link>
                     </li>
+                    <li className="py-2 text-xl text-black transition-colors hover:text-neutral-500 dark:text-white">
+                      <Link href="/packs" prefetch={true} onClick={closeMobileMenu}>
+                        Packs &amp; Guidance
+                      </Link>
+                    </li>
                     {menu.map((item: Menu) => (
                       <li
                         className="py-2 text-xl text-black transition-colors hover:text-neutral-500 dark:text-white"

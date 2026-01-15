@@ -1,0 +1,13 @@
+[pack]
+id = "llm_judge_demo"
+name = "LLM Judge Demo"
+version = "0.1.0"
+description = "Optional LLM-based goal adherence judge (Anthropic)."
+
+[[evaluators]]
+id = "goal_adherence"
+kind = "llm"
+entrypoint = "evaluators.py:goal_adherence"
+severity = "warn"
+description = "Optional LLM judge that scores goal adherence from the final response."
+default_config = { model = "claude-3-5-haiku-20241022", min_score = 3 }

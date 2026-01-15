@@ -38,6 +38,7 @@ import asyncio
 import json
 import os
 import statistics
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -64,6 +65,15 @@ from benchmark_computeruse import (
     get_order_items,
     get_order_total,
     has_completed_order,
+)
+from pack_api.loader import PackRegistry
+from pack_api.runtime import (
+    assemble_system_prompt,
+    build_fuzz_cases,
+    load_guidance_fragments,
+    run_evaluators_on_trace,
+    write_eval_results,
+    gate_should_fail,
 )
 
 
@@ -117,6 +127,40 @@ class FuzzScenario:
     strategy: str
     injection_turn: int
     injection_message: str
+
+
+def _infer_tshirt_variant(instruction: str) -> str:
+    lowered = instruction.lower()
+    if "size m" in lowered or " medium" in lowered:
+        return "M"
+    if "size l" in lowered or " large" in lowered:
+        return "L"
+    if "size s" in lowered or " small" in lowered:
+        return "S"
+    raise ValueError(f"Unable to infer size from instruction: {instruction}")
+
+
+def _build_verifier_for_instruction(instruction: str) -> Callable[[dict], bool]:
+    lowered = instruction.lower()
+    if "t-shirt" not in lowered:
+        raise ValueError(f"Unsupported instruction for pack fuzzing: {instruction}")
+    variant = _infer_tshirt_variant(instruction)
+    return make_order_verifier({"black-t-shirt": {"qty": 1, "variant": variant}}, total_cents=2000)
+
+
+def _scenario_from_case(case) -> FuzzScenario:
+    verifier_before = _build_verifier_for_instruction(case.base_instruction)
+    goal_after = case.updated_goal or case.base_instruction
+    verifier_after = _build_verifier_for_instruction(goal_after)
+    return FuzzScenario(
+        scenario_id=getattr(case, "scenario_id", None) or getattr(case, "case_id", ""),
+        base_instruction=case.base_instruction,
+        verifier_before=verifier_before,
+        verifier_after=verifier_after,
+        strategy=getattr(case, "strategy", None) or "pack_case",
+        injection_turn=case.injection_turn,
+        injection_message=case.injection_message,
+    )
 
 
 def build_scenarios(injection_turns: list[int]) -> list[FuzzScenario]:
@@ -188,6 +232,7 @@ async def run_fuzz_trial(
     discoverability: str,
     capability: str,
     system_prompt: str = SYSTEM_PROMPT,
+    guidance_meta: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY environment variable is required")
@@ -268,13 +313,15 @@ async def run_fuzz_trial(
                 "api_url": api_url,
                 "discoverability": discoverability,
                 "capability": capability,
-                "model": "claude-sonnet-4-5-20250929",
+                "model": agent.model,
                 "anthropic_beta": "computer-use-2025-01-24",
                 "display_width": DISPLAY_WIDTH,
                 "display_height": DISPLAY_HEIGHT,
                 "max_iterations": MAX_ITERATIONS,
                 "system_prompt": agent.system_prompt,
             }
+            if guidance_meta:
+                trace_meta.update(guidance_meta)
             trace_path.write_text(json.dumps(agent.export_trace(trace_meta), indent=2), encoding="utf-8")
 
         await browser.close()
@@ -347,11 +394,32 @@ async def main_async() -> None:
     parser.add_argument("--runs-per-scenario", type=int, default=1)
     parser.add_argument("--turns", type=str, default="3,4,5", help="Comma-separated injection turns")
     parser.add_argument("--system-prompt-file", type=str, default=None, help="Optional system prompt override")
+    parser.add_argument("--fuzz-pack", type=str, default="", help="Optional pack id for fuzz cases")
+    parser.add_argument("--fuzzer", type=str, default="", help="Fuzzer id within the pack")
+    parser.add_argument("--eval-packs", type=str, default="", help="Comma-separated pack IDs to evaluate traces")
+    parser.add_argument("--guidance-packs", type=str, default="", help="Comma-separated guidance pack IDs")
     args = parser.parse_args()
 
-    system_prompt = SYSTEM_PROMPT
+    base_prompt = SYSTEM_PROMPT
     if args.system_prompt_file:
-        system_prompt = Path(args.system_prompt_file).read_text(encoding="utf-8")
+        base_prompt = Path(args.system_prompt_file).read_text(encoding="utf-8")
+
+    guidance_packs = [p.strip() for p in args.guidance_packs.split(",") if p.strip()]
+    guidance_fragments: list[str] = []
+    registry = None
+    if guidance_packs:
+        registry = PackRegistry.discover()
+        guidance_fragments = load_guidance_fragments(registry, selected_guidance=guidance_packs)
+    system_prompt = assemble_system_prompt(base_prompt, guidance_fragments)
+    guidance_meta = None
+    if guidance_packs:
+        prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
+        guidance_meta = {
+            "base_system_prompt": base_prompt,
+            "guidance_packs": guidance_packs,
+            "guidance_fragments": guidance_fragments,
+            "guidance_prompt_hash": prompt_hash,
+        }
 
     if not ANTHROPIC_API_KEY:
         console.print("[red]ERROR: ANTHROPIC_API_KEY environment variable is required[/red]")
@@ -367,7 +435,21 @@ async def main_async() -> None:
     api_url = base_url
 
     injection_turns = [int(x.strip()) for x in args.turns.split(",") if x.strip()]
-    scenarios = build_scenarios(injection_turns)
+    if args.fuzz_pack:
+        if not args.fuzzer:
+            console.print("[red]ERROR: --fuzzer is required when using --fuzz-pack[/red]")
+            return
+        registry = PackRegistry.discover()
+        fuzzer_spec = registry.get_fuzzer_spec(args.fuzz_pack, args.fuzzer)
+        fuzzer_fn = registry.load_fuzzer(args.fuzz_pack, args.fuzzer)
+        cases = build_fuzz_cases(fuzzer_fn, injection_turns, config=fuzzer_spec.default_config)
+        try:
+            scenarios = [_scenario_from_case(case) for case in cases]
+        except Exception as exc:
+            console.print(f"[red]ERROR: Failed to build verifiers for pack fuzz cases: {exc}[/red]")
+            return
+    else:
+        scenarios = build_scenarios(injection_turns)
 
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     condition_name = f"Fuzz/{args.app}/{args.start}/{args.discoverability}/{args.capability}"
@@ -390,6 +472,7 @@ async def main_async() -> None:
                     discoverability=args.discoverability,
                     capability=args.capability,
                     system_prompt=system_prompt,
+                    guidance_meta=guidance_meta,
                 )
             except Exception as e:
                 res = {
@@ -400,6 +483,20 @@ async def main_async() -> None:
                     "error": str(e),
                 }
             results.append(res)
+
+            eval_packs = [p.strip() for p in args.eval_packs.split(",") if p.strip()]
+            trace_path_str = res.get("trace_path")
+            if eval_packs and trace_path_str:
+                try:
+                    trace_path = Path(trace_path_str)
+                    trace = json.loads(trace_path.read_text(encoding="utf-8"))
+                    registry = registry or PackRegistry.discover()
+                    eval_results = run_evaluators_on_trace(trace, selected_packs=eval_packs, registry=registry)
+                    out_path = write_eval_results(trace_path, eval_results)
+                    gate_status = "FAIL" if gate_should_fail(eval_results) else "PASS"
+                    console.print(f"    Eval packs: {', '.join(eval_packs)} -> {out_path} ({gate_status})")
+                except Exception as e:
+                    console.print(f"[yellow]Warning: evaluator run failed: {e}[/yellow]")
 
     # Summarize
     console.print()

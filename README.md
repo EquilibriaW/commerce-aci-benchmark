@@ -178,6 +178,100 @@ This writes a `counterfactual_*.json` report next to the trace.
 
 ---
 
+## Packs (Evaluators, Fuzzers, Guidance, Advisors)
+
+Packs are drop-in folders that add evaluators and fuzzing strategies without touching core code.
+They are discovered under `./packs/*/pack.toml` and any additional directories listed in
+`COMMERCE_PACK_PATHS` (os.pathsep-separated).
+
+### pack.toml schema
+
+```toml
+[pack]
+id = "my_pack"
+name = "My Pack"
+version = "0.1.0"
+description = "..."
+
+[[evaluators]]
+id = "my_eval"
+kind = "code" # or "llm"
+entrypoint = "evaluators.py:my_eval"
+severity = "warn" # or "error"
+description = "Human-readable evaluator summary."
+default_config = { max_steps = 18 }
+
+[[fuzzers]]
+id = "my_fuzzer"
+kind = "code" # template | llm | code
+entrypoint = "fuzzers.py:build_cases"
+description = "Human-readable fuzzer summary."
+default_config = { base_instruction = "Buy me a black T-shirt" }
+
+[[guidance]]
+id = "baseline_guidance"
+kind = "code" # static | code | llm
+entrypoint = "guidance.py:baseline_guidance"
+description = "Guidance fragments appended to the system prompt."
+
+[[advisors]]
+id = "suggest_patch"
+kind = "llm" # or "code"
+entrypoint = "advisor.py:suggest_patch"
+description = "Suggest guidance patches based on failing traces."
+default_config = { model = "claude-3-5-haiku-20241022" }
+```
+
+Entry points use `relative_file.py:function` syntax and must live inside the pack folder.
+
+### Add a pack
+
+1. Create a folder under `packs/your_pack` with a `pack.toml`.
+2. Implement `evaluators.py` and/or `fuzzers.py`.
+3. Optionally add an external pack folder to `COMMERCE_PACK_PATHS`.
+
+### CLI usage
+
+```bash
+python pack_cli.py list-packs
+python pack_cli.py list-components --type evaluators
+python pack_cli.py eval-trace --trace debug_screenshots/.../trace.json --eval-packs commerce_safety
+python pack_cli.py eval-dir --dir debug_screenshots --eval-packs commerce_safety --json
+python pack_cli.py fuzz-generate --fuzz-pack basic_flow_fuzz --fuzzer basic_strategies --turns 2,3 --out fuzz_cases.json
+python pack_cli.py guidance-suggest --trace debug_screenshots/.../trace.json --advisor-pack advisor_guidance_patch --advisor suggest_patch --out guidance_patch.json
+```
+
+### Built-in packs
+
+- `commerce_safety`: deterministic guardrails (max steps, loop detector, premature TASK_COMPLETE)
+- `basic_flow_fuzz`: template fuzzing (intent shift, info overload, tool injection)
+- `guidance_basics`: simple guidance fragments to append to the system prompt
+- `advisor_guidance_patch`: optional LLM advisor that proposes guidance patches
+
+### Integrations
+
+- Evaluate traces during a benchmark run:
+  ```bash
+  python benchmark_computeruse.py --eval-packs commerce_safety
+  ```
+- Optional gate policy (for blocking on uncertain results):
+  ```bash
+  python benchmark_computeruse.py --eval-packs commerce_safety --gate-policy policy.toml
+  ```
+- Apply guidance packs:
+  ```bash
+  python benchmark_computeruse.py --guidance-packs guidance_basics
+  ```
+- Use a pack fuzzer with flow fuzzing:
+  ```bash
+  python flow_fuzz.py --fuzz-pack basic_flow_fuzz --fuzzer basic_strategies --turns 3,4,5
+  ```
+- Evaluate fuzz traces and apply guidance:
+  ```bash
+  python flow_fuzz.py --fuzz-pack basic_flow_fuzz --fuzzer basic_strategies --turns 3,4,5 \
+    --eval-packs commerce_safety --guidance-packs guidance_basics
+  ```
+
 ## New: Trace Trees & Counterfactual Branching
 
 The benchmark now includes a **git-like trace branching system** for counterfactual analysis. This allows you to:

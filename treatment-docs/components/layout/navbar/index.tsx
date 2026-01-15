@@ -50,6 +50,15 @@ export async function Navbar() {
                   </Link>
                 </li>
               )}
+              <li>
+                <Link
+                  href="/packs"
+                  prefetch={true}
+                  className="text-neutral-500 underline-offset-4 hover:text-black hover:underline dark:text-neutral-400 dark:hover:text-neutral-300"
+                >
+                  Packs &amp; Guidance
+                </Link>
+              </li>
               {menu.map((item: Menu) => (
                 <li key={item.title}>
                   <Link
