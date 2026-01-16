@@ -160,6 +160,118 @@ def _first_divergence_step(left_steps: list[dict], right_steps: list[dict]) -> O
     return None
 
 
+def _extract_tool_actions(steps: list[dict]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    for idx, step in enumerate(steps, start=1):
+        tool_uses = (step.get("assistant") or {}).get("tool_uses") or []
+        for tu in tool_uses:
+            inp = tu.get("input") or {}
+            action = inp.get("action") or "?"
+            actions.append({
+                "step": idx,
+                "action": action,
+                "coordinate": inp.get("coordinate"),
+                "text": (inp.get("text") or "")[:40],
+            })
+    return actions
+
+
+def _action_key(action: dict[str, Any]) -> tuple:
+    coord = action.get("coordinate")
+    coord_key = tuple(coord) if isinstance(coord, list) else None
+    return (action.get("action"), coord_key, action.get("text") or "")
+
+
+def _detect_action_loop(actions: list[dict[str, Any]], min_run: int = 3) -> Optional[dict[str, Any]]:
+    if not actions:
+        return None
+    best = None
+    current_key = None
+    current_start = 0
+    current_len = 0
+
+    for idx, action in enumerate(actions):
+        key = _action_key(action)
+        if key == current_key:
+            current_len += 1
+        else:
+            if current_len >= min_run:
+                best = (current_start, current_len, current_key)
+            current_key = key
+            current_start = idx
+            current_len = 1
+
+    if current_len >= min_run:
+        best = (current_start, current_len, current_key)
+
+    if not best:
+        return None
+
+    start_idx, length, key = best
+    start_step = actions[start_idx]["step"]
+    end_step = actions[start_idx + length - 1]["step"]
+    return {
+        "action": key[0],
+        "coordinate": key[1],
+        "text": key[2],
+        "start_step": start_step,
+        "end_step": end_step,
+        "length": length,
+    }
+
+
+def _action_counts(actions: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for action in actions:
+        name = action.get("action") or "?"
+        counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def _task_complete_mentioned(steps: list[dict]) -> bool:
+    for step in reversed(steps):
+        text = (step.get("assistant") or {}).get("text") or ""
+        if "TASK_COMPLETE" in text:
+            return True
+    return False
+
+
+def _persist_judge_prompt(
+    trace_path: Path,
+    trace: dict[str, Any],
+    prompt: str,
+    label: str,
+) -> None:
+    if not prompt:
+        return
+    meta = trace.get("meta") or {}
+    prompts = dict(meta.get("judge_system_prompts") or {})
+    hashes = dict(meta.get("judge_system_prompt_hashes") or {})
+    prompts[label] = prompt
+    hashes[label] = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    meta["judge_system_prompts"] = prompts
+    meta["judge_system_prompt_hashes"] = hashes
+    trace["meta"] = meta
+    trace_path.write_text(json.dumps(trace, indent=2), encoding="utf-8")
+
+
+def _derive_failure_reason(final_state: dict[str, Any], success_flag: Optional[bool]) -> str:
+    if success_flag:
+        return "success"
+    stage = (final_state or {}).get("stage")
+    if stage == "browse":
+        return "no_items_added"
+    if stage == "cart":
+        return "checkout_not_started"
+    if stage == "checkout":
+        return "checkout_incomplete"
+    if stage == "done":
+        return "verifier_failed"
+    if stage == "error":
+        return "state_error"
+    return "unknown"
+
+
 class InteractiveRunner:
     def __init__(self) -> None:
         self.loop = asyncio.new_event_loop()
@@ -320,6 +432,16 @@ def main() -> None:
         st.session_state["interactive_trace_path"] = ""
     if "interactive_user_message" not in st.session_state:
         st.session_state["interactive_user_message"] = ""
+    if "trace_path_override" not in st.session_state:
+        st.session_state["trace_path_override"] = ""
+    if "reliability_report" not in st.session_state:
+        st.session_state["reliability_report"] = None
+    if "reliability_out_path" not in st.session_state:
+        st.session_state["reliability_out_path"] = ""
+    if "eval_judge_prompt" not in st.session_state:
+        st.session_state["eval_judge_prompt"] = ""
+    if "diag_system_prompt" not in st.session_state:
+        st.session_state["diag_system_prompt"] = st.session_state.get("eval_judge_prompt", "")
 
     # Sidebar config
     st.sidebar.header("Trace Source")
@@ -329,7 +451,7 @@ def main() -> None:
     traces = find_traces(debug_root_p)
 
     # Always show tabs - Run Launcher doesn't require traces
-    tabs = st.tabs(["Run Launcher", "Packs & Guidance", "Trace Viewer", "Trace Trees"])
+    tabs = st.tabs(["Run Launcher", "Packs & Guidance", "Trace Viewer", "Trace Trees", "Reliability Dashboard"])
 
     # Trace selection (only if traces exist)
     trace_item = None
@@ -339,7 +461,20 @@ def main() -> None:
 
     if traces:
         trace_labels = [t.label for t in traces]
-        choice = st.sidebar.selectbox("Select a trace", options=list(range(len(traces))), format_func=lambda i: trace_labels[i])
+        selected_index = 0
+        override_path = st.session_state.get("trace_path_override")
+        if override_path:
+            for idx, item in enumerate(traces):
+                if str(item.path) == str(override_path):
+                    selected_index = idx
+                    st.session_state["trace_path_override"] = ""
+                    break
+        choice = st.sidebar.selectbox(
+            "Select a trace",
+            options=list(range(len(traces))),
+            format_func=lambda i: trace_labels[i],
+            index=selected_index
+        )
         trace_item = traces[int(choice)]
         trace = _load_trace(trace_item.path)
         meta = trace.get("meta") or {}
@@ -902,6 +1037,13 @@ def main() -> None:
             parent_trace_id = trace.get("parent_trace_id")
             branch_point_step = trace.get("branch_point_step")
             intervention_data = trace.get("intervention")
+            registry = None
+            packs = []
+            try:
+                registry = PackRegistry.discover()
+                packs = registry.list_packs()
+            except Exception:
+                registry = None
 
             # === Header: minimap + info ===
             injection_steps = [i+1 for i, s in enumerate(steps) if s.get("user_extra")]
@@ -987,6 +1129,195 @@ def main() -> None:
                     if _img_exists(imgp):
                         cols[i % 4].image(str(imgp), caption=tr.get('result_text', '')[:20])
 
+            # === Investigation ===
+            st.markdown("### Investigation")
+            final_state = meta.get("final_state") or {}
+            success_flag = meta.get("success")
+            stage = final_state.get("stage") or "unknown"
+            failure_reason = _derive_failure_reason(final_state, success_flag)
+            progress = final_state.get("progress") or {}
+            events = final_state.get("events") or {}
+            event_counts = events.get("counts_by_type") or {}
+            last_events = events.get("last_n") or []
+            last_event_type = last_events[-1].get("type") if last_events else None
+
+            actions = _extract_tool_actions(steps)
+            action_tail = actions[-5:] if actions else []
+            action_counts = _action_counts(actions) if actions else {}
+            loop_info = _detect_action_loop(actions)
+            task_complete = _task_complete_mentioned(steps)
+
+            success_label = "unknown" if success_flag is None else ("yes" if success_flag else "no")
+            cols = st.columns(4)
+            cols[0].metric("Success", success_label)
+            cols[1].metric("Stage", stage)
+            cols[2].metric("Failure reason", failure_reason)
+            cols[3].metric("Last event", last_event_type or "none")
+
+            missing_events: list[str] = []
+            if progress:
+                if not progress.get("has_cart_items"):
+                    missing_events.append("ADD_TO_CART")
+                if not progress.get("checkout_started"):
+                    missing_events.append("START_CHECKOUT")
+                if not progress.get("order_completed"):
+                    missing_events.append("CHECKOUT_COMPLETE")
+
+            if missing_events:
+                st.caption(f"Missing events: {', '.join(missing_events)}")
+
+            if meta.get("variant_seed") is not None or meta.get("variant_level") is not None:
+                st.caption(f"Variant seed: {meta.get('variant_seed')} | Level: {meta.get('variant_level')}")
+
+            if event_counts:
+                st.markdown("#### Event counts")
+                st.dataframe(
+                    pd.DataFrame([{"event": k, "count": v} for k, v in event_counts.items()]),
+                    use_container_width=True,
+                )
+
+            if last_events:
+                st.markdown("#### Recent events")
+                st.dataframe(
+                    pd.DataFrame(last_events[-8:]),
+                    use_container_width=True,
+                )
+
+            if action_counts:
+                st.markdown("#### Action mix")
+                st.dataframe(
+                    pd.DataFrame([{"action": k, "count": v} for k, v in action_counts.items()]),
+                    use_container_width=True,
+                )
+
+            if action_tail:
+                st.markdown("#### Last actions")
+                lines = []
+                for action in action_tail:
+                    base = f"Step {action['step']:02d}: {action['action']}"
+                    if action.get("coordinate"):
+                        base += f" @ {action['coordinate']}"
+                    if action.get("text"):
+                        base += f" | {action['text']}"
+                    lines.append(base)
+                st.code("\n".join(lines), language=None)
+
+            if loop_info:
+                msg = f"Loop detected: {loop_info['action']} repeated {loop_info['length']}x (steps {loop_info['start_step']}-{loop_info['end_step']})."
+                if loop_info.get("coordinate"):
+                    msg += f" Coord: {list(loop_info['coordinate'])}"
+                st.warning(msg)
+
+            if task_complete and success_flag is False:
+                st.warning("Agent declared TASK_COMPLETE but run did not succeed.")
+
+            if not final_state:
+                st.caption("Final state not recorded in this trace. Rerun with debug traces to enable deeper diagnosis.")
+
+            # Suggested interventions
+            hints = []
+            hint_map = {
+                "no_items_added": "No items added. Consider adding a clarification step or stronger product-finding guidance.",
+                "checkout_not_started": "Items in cart but checkout never started. Add guidance to proceed to checkout once cart is correct.",
+                "checkout_incomplete": "Checkout started but not completed. Check form filling or decoy button confusion.",
+                "verifier_failed": "Order completed but verifier failed. Likely wrong item/variant/quantity.",
+                "state_error": "State fetch failed. Check server stability or retry logic.",
+            }
+            hint = hint_map.get(failure_reason)
+            if hint:
+                hints.append(hint)
+            if loop_info:
+                hints.append("Looping behavior detected. Try a guidance fragment like “if an action fails twice, choose a different path.”")
+            if not actions:
+                hints.append("No tool actions recorded. Verify tool permissions and model/tool configuration.")
+            if hints:
+                st.markdown("#### Suggested interventions")
+                for item in hints:
+                    st.write(f"- {item}")
+
+            # === LLM Diagnosis ===
+            st.markdown("### LLM Diagnosis (optional)")
+            diag_available = False
+            if registry:
+                for pack in packs:
+                    if pack.id != "llm_judge_demo":
+                        continue
+                    for spec in pack.evaluators:
+                        if spec.id == "failure_diagnosis":
+                            diag_available = True
+                            break
+            if not diag_available:
+                st.caption("LLM diagnosis evaluator not available. Enable pack `llm_judge_demo` and set ANTHROPIC_API_KEY.")
+            else:
+                default_rubric = (
+                    "Identify likely failure modes and whether this run should be marked as fail or uncertain. "
+                    "Include one concrete intervention the developer can try."
+                )
+                rubric = st.text_area("Diagnosis rubric", value=default_rubric, key="diag_rubric", height=80)
+                judge_system_prompt = st.text_area(
+                    "Judge system prompt (policies)",
+                    key="diag_system_prompt",
+                    height=100,
+                    help="Use this to encode company policies, tone, refund rules, or safety boundaries.",
+                )
+                if st.button("Run LLM Diagnosis", key="run_llm_diag"):
+                    if registry is None:
+                        st.warning("Pack registry unavailable.")
+                    else:
+                        try:
+                            results = run_evaluators_on_trace(
+                                trace,
+                                selected_evaluators=["llm_judge_demo:failure_diagnosis"],
+                                config_overrides={
+                                    "llm_judge_demo:failure_diagnosis": {
+                                        "rubric": rubric,
+                                        "system_prompt": judge_system_prompt,
+                                    }
+                                },
+                                registry=registry,
+                            )
+                            if judge_system_prompt and trace_item:
+                                _persist_judge_prompt(
+                                    trace_item.path,
+                                    trace,
+                                    judge_system_prompt,
+                                    "llm_judge_demo:failure_diagnosis",
+                                )
+                            if results:
+                                st.session_state["llm_diag"] = results[0].__dict__
+                                st.session_state["llm_diag_trace"] = str(trace_item.path)
+                        except Exception as e:
+                            st.error(f"LLM diagnosis failed: {e}")
+
+                diag = st.session_state.get("llm_diag")
+                diag_trace = st.session_state.get("llm_diag_trace")
+                if diag and diag_trace == str(trace_item.path):
+                    st.caption("Advisory only. Use alongside deterministic signals.")
+                    st.markdown(f"**Decision:** {diag.get('decision')}")
+                    if diag.get("confidence") is not None:
+                        st.markdown(f"**Confidence:** {diag.get('confidence')}")
+                    if diag.get("summary"):
+                        st.markdown("**Summary**")
+                        st.write(diag.get("summary"))
+                    metrics = diag.get("metrics") or {}
+                    if metrics.get("failure_reason") or metrics.get("suggested_intervention"):
+                        st.markdown("**Diagnosis**")
+                        if metrics.get("failure_reason"):
+                            st.write(f"Failure reason: {metrics.get('failure_reason')}")
+                        if metrics.get("suggested_intervention"):
+                            st.write(f"Suggested intervention: {metrics.get('suggested_intervention')}")
+                    evidence = diag.get("evidence") or []
+                    if evidence:
+                        st.markdown("**Evidence**")
+                        for ev in evidence:
+                            if isinstance(ev, dict):
+                                step = ev.get("step_index")
+                                note = ev.get("note")
+                                if step is not None:
+                                    st.write(f"Step {step}: {note or ''}")
+                            else:
+                                st.write(str(ev))
+
             # === Prompt & Guidance ===
             st.markdown("### Prompt")
             st.caption(f"Guidance packs: {', '.join(guidance_packs) if guidance_packs else 'None'}")
@@ -1024,14 +1355,22 @@ def main() -> None:
             st.markdown("### Evaluators")
             st.caption("Deterministic checks over the trace. Gate fails if any error-level evaluator fails.")
             try:
-                registry = PackRegistry.discover()
-                packs = registry.list_packs()
+                if registry is None:
+                    registry = PackRegistry.discover()
+                    packs = registry.list_packs()
                 pack_ids = [p.id for p in packs if p.evaluators]
             except Exception as e:
                 st.error(f"Failed to load packs: {e}")
                 pack_ids = []
                 packs = []
                 registry = None
+
+            judge_prompt = st.text_area(
+                "Judge system prompt (policies)",
+                key="eval_judge_prompt",
+                height=100,
+                help="Applied to all LLM evaluators unless a specific evaluator overrides system_prompt.",
+            )
 
             selected_packs = st.multiselect("Packs", options=pack_ids, default=[])
             catalog_rows = []
@@ -1062,7 +1401,10 @@ def main() -> None:
                             trace,
                             selected_packs=selected_packs,
                             registry=registry,
+                            judge_system_prompt=judge_prompt,
                         )
+                    if judge_prompt and trace_item:
+                        _persist_judge_prompt(trace_item.path, trace, judge_prompt, "global")
                     st.session_state["eval_results"] = results
                     st.session_state["eval_trace_path"] = str(trace_item.path) if trace_item else ""
                     st.session_state["eval_packs"] = list(selected_packs)
@@ -1390,6 +1732,290 @@ def main() -> None:
 
         elif not traces:
             st.info("Run a benchmark first to generate traces.")
+
+    # === Reliability Dashboard (Tab 4) ===
+    with tabs[4]:
+        st.subheader("Reliability Dashboard")
+        st.caption("Run seeded sweeps across UI variants and summarize failures and event coverage.")
+
+        st.markdown("### Load Existing Report")
+        reports_dir = Path("benchmark_results")
+        report_files: list[Path] = []
+        if reports_dir.exists():
+            report_files = sorted(
+                reports_dir.glob("reliability_*.json"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+
+        if report_files:
+            report_labels = [
+                f"{p.name} ({datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')})"
+                for p in report_files
+            ]
+            report_choice = st.selectbox(
+                "Past reports",
+                options=list(range(len(report_files))),
+                format_func=lambda i: report_labels[i],
+                key="rel_report_select",
+            )
+            if st.button("Load selected report", key="rel_load_report"):
+                try:
+                    chosen = report_files[int(report_choice)]
+                    report = json.loads(chosen.read_text(encoding="utf-8"))
+                    st.session_state["reliability_report"] = report
+                    st.session_state["reliability_out_path"] = str(chosen)
+                    st.success(f"Loaded report: {chosen}")
+                except Exception as e:
+                    st.error(f"Failed to load report: {e}")
+        else:
+            st.caption("No reliability reports found in benchmark_results/ yet.")
+
+        col_left, col_right = st.columns(2)
+        with col_left:
+            rel_app = st.selectbox("App", ["treatment", "treatment-docs", "baseline"], index=0, key="rel_app")
+            rel_start = st.selectbox("Start point", ["root", "agent"], index=0, key="rel_start")
+            rel_discoverability = st.selectbox("Discoverability", ["navbar", "hidden"], index=0, key="rel_disc")
+        with col_right:
+            rel_capability = st.selectbox("Capability", ["advantage", "parity"], index=0, key="rel_cap")
+            rel_model = st.selectbox("Model", ["sonnet", "haiku"], index=0, key="rel_model")
+            task_options = {t["id"]: f"{t['id']}: {t['instruction'][:50]}..." for t in PREDEFINED_TASKS}
+            rel_task_id = st.selectbox(
+                "Task",
+                options=list(task_options.keys()),
+                format_func=lambda x: task_options[x],
+                key="rel_task"
+            )
+
+        rel_seeds = st.text_input(
+            "Seeds",
+            value="0-9",
+            help="Base sweep seeds. Examples: 0-9 or 0,1,2,3",
+        )
+        rel_variant_level = st.slider(
+            "Variant level",
+            0,
+            3,
+            0,
+            key="rel_variant_level",
+            help=(
+                "0 = baseline UI. Higher levels add stronger perturbations (e.g., decoy button at >=2 "
+                "and optional latency at >=3 when seed%3==0)."
+            ),
+        )
+        rel_adaptive = st.checkbox(
+            "Adaptive expansion",
+            value=False,
+            key="rel_adaptive",
+            help=(
+                "Rerun failing seeds at level+1 (capped at 3). Budget limits the number of extra runs."
+            ),
+        )
+        rel_budget = st.number_input(
+            "Adaptive budget",
+            min_value=1,
+            max_value=100,
+            value=10,
+            step=1,
+            disabled=not rel_adaptive,
+            key="rel_budget",
+            help="Maximum number of adaptive reruns (each rerun uses the same seed with higher level)."
+        )
+        rel_prompt_override = st.text_area(
+            "System prompt override (optional)",
+            height=120,
+            key="rel_prompt_override"
+        )
+
+        st.markdown("### Command")
+        rel_cmd = [
+            "python", "reliability_eval.py",
+            "--app", rel_app,
+            "--task", rel_task_id,
+            "--start", rel_start,
+            "--discoverability", rel_discoverability,
+            "--capability", rel_capability,
+            "--model", rel_model,
+            "--seeds", rel_seeds,
+            "--variant-level", str(int(rel_variant_level)),
+        ]
+        if rel_adaptive:
+            rel_cmd += ["--adaptive", "--adaptive-budget", str(int(rel_budget))]
+        st.code(" ".join(rel_cmd))
+
+        if st.button("Run Reliability Eval", type="primary"):
+            tmp_prompt_file = None
+            cmd = list(rel_cmd)
+            if rel_prompt_override.strip():
+                tmp_dir = Path(".tmp_prompts")
+                tmp_dir.mkdir(exist_ok=True)
+                tmp_prompt_file = tmp_dir / f"reliability_prompt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                tmp_prompt_file.write_text(rel_prompt_override, encoding="utf-8")
+                cmd += ["--prompt-file", str(tmp_prompt_file)]
+
+            out_path = Path(f"benchmark_results/reliability_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+            cmd += ["--out", str(out_path)]
+
+            with st.spinner("Running reliability sweep…"):
+                proc = subprocess.run(cmd, capture_output=True, text=True)
+
+            st.markdown("**STDOUT**")
+            st.text_area("rel_stdout", value=proc.stdout, height=200)
+            st.markdown("**STDERR**")
+            st.text_area("rel_stderr", value=proc.stderr, height=200)
+
+            if proc.returncode != 0:
+                st.error(f"Command failed with exit code {proc.returncode}")
+            else:
+                try:
+                    report = json.loads(out_path.read_text(encoding="utf-8"))
+                    st.session_state["reliability_report"] = report
+                    st.session_state["reliability_out_path"] = str(out_path)
+                    st.success(f"Report saved to {out_path}")
+                except Exception as e:
+                    st.error(f"Failed to read report: {e}")
+
+        report = st.session_state.get("reliability_report")
+        if report:
+            summary = report.get("summary", {})
+            expanded = report.get("expanded_summary") or {}
+
+            base_rate = summary.get("success_rate", 0) * 100
+            st.metric("Base success rate", f"{base_rate:.1f}%")
+
+            if expanded.get("expanded_success_rate") is not None:
+                expanded_rate = expanded.get("expanded_success_rate", 0) * 100
+                st.metric("Expanded success rate", f"{expanded_rate:.1f}%")
+
+            st.markdown("### Failure stage histogram (base)")
+            st.caption("Stage meaning: browse=no cart items, cart=items but no START_CHECKOUT, checkout=started but no order, done=order completed but verifier failed.")
+            base_hist = summary.get("failure_stage_histogram", {})
+            if base_hist:
+                st.bar_chart(pd.Series(base_hist))
+            else:
+                st.caption("No failures recorded in base runs.")
+
+            base_reason = summary.get("failure_reason_histogram", {})
+            if base_reason:
+                st.markdown("### Failure reasons (base)")
+                st.bar_chart(pd.Series(base_reason))
+
+            if expanded.get("failure_stage_shift"):
+                st.markdown("### Failure stage histogram (adaptive)")
+                adaptive_hist = expanded.get("failure_stage_shift", {}).get("adaptive") or {}
+                if adaptive_hist:
+                    st.bar_chart(pd.Series(adaptive_hist))
+                else:
+                    st.caption("No failures recorded in adaptive runs.")
+
+            adaptive_reason = expanded.get("failure_reason_shift", {}).get("adaptive") if expanded else None
+            if adaptive_reason:
+                st.markdown("### Failure reasons (adaptive)")
+                st.bar_chart(pd.Series(adaptive_reason))
+
+            st.markdown("### Runs")
+            base_runs = report.get("base_runs", [])
+            adaptive_runs = report.get("adaptive_runs", [])
+            run_rows = base_runs + adaptive_runs
+            if run_rows:
+                df = pd.DataFrame(run_rows)
+                columns = [
+                    c for c in [
+                        "seed",
+                        "variant_level",
+                        "success",
+                        "stage",
+                        "failure_reason",
+                        "last_event_type",
+                        "cart_total_items",
+                        "steps",
+                        "events_total",
+                        "trace_path",
+                    ]
+                    if c in df.columns
+                ]
+                if "error" in df.columns:
+                    columns.append("error")
+                st.dataframe(df[columns], use_container_width=True)
+            else:
+                st.caption("No runs to display.")
+
+            if run_rows:
+                st.markdown("### Run Inspector")
+                run_labels: list[str] = []
+                run_map: dict[str, dict] = {}
+                for run in run_rows:
+                    label = (
+                        f\"{'adaptive' if run.get('is_adaptive') else 'base'} "
+                        f\"seed {run.get('seed')} "
+                        f\"L{run.get('variant_level')} "
+                        f\"{'PASS' if run.get('success') else 'FAIL'} "
+                        f\"stage={run.get('stage')} "
+                        f\"reason={run.get('failure_reason')}\"
+                    )
+                    run_labels.append(label)
+                    run_map[label] = run
+
+                selected_label = st.selectbox("Inspect a run", options=run_labels, key="rel_inspect_run")
+                selected_run = run_map.get(selected_label, {})
+
+                col_a, col_b, col_c = st.columns(3)
+                col_a.metric("Stage", selected_run.get("stage", "unknown"))
+                col_b.metric("Failure reason", selected_run.get("failure_reason", "unknown"))
+                col_c.metric("Last event", selected_run.get("last_event_type") or "none")
+
+                missing = selected_run.get("missing_events") or []
+                if missing:
+                    st.caption(f\"Missing events: {', '.join(missing)}\")
+
+                cart_preview = selected_run.get("cart_items_preview") or []
+                if cart_preview:
+                    st.markdown("**Cart preview**")
+                    st.dataframe(pd.DataFrame(cart_preview), use_container_width=True)
+
+                action_tail = selected_run.get("action_log_tail") or []
+                if action_tail:
+                    st.markdown("**Last actions**")
+                    st.code(\"\\n\".join(action_tail), language=None)
+
+                hint_map = {
+                    "no_items_added": "No cart items detected. Suggest improving product discovery or adding a clarifying question when unsure.",
+                    "checkout_not_started": "Items in cart but checkout not started. Add guidance like “proceed to checkout after items are correct.”",
+                    "checkout_incomplete": "Checkout started but not completed. Check form filling and decoy button confusion.",
+                    "verifier_failed": "Order completed but verifier failed. Likely wrong variant/quantity or incorrect item.",
+                    "state_error": "State fetch failed. Ensure the app server is stable and reachable.",
+                }
+                hint = hint_map.get(selected_run.get("failure_reason"))
+                if hint:
+                    st.info(hint)
+
+                trace_path = selected_run.get("trace_path")
+                if trace_path and st.button("Open this trace in Viewer", key="rel_open_trace"):
+                    st.session_state["trace_path_override"] = trace_path
+                    st.success("Trace selected. Switch to Trace Viewer tab.")
+
+            st.markdown("### Event counts (base)")
+            event_counts = summary.get("event_coverage", {}).get("counts_by_type") or {}
+            if event_counts:
+                st.dataframe(pd.DataFrame([
+                    {"event": k, "count": v} for k, v in event_counts.items()
+                ]), use_container_width=True)
+            else:
+                st.caption("No events recorded.")
+
+            trace_options = {}
+            for run in run_rows:
+                trace_path = run.get("trace_path")
+                if trace_path:
+                    label = f"{'adaptive' if run.get('is_adaptive') else 'base'} seed {run.get('seed')} (L{run.get('variant_level')})"
+                    trace_options[label] = trace_path
+
+            if trace_options:
+                st.markdown("### Open Trace in Viewer")
+                selection = st.selectbox("Trace", options=list(trace_options.keys()))
+                if st.button("Open selected trace"):
+                    st.session_state["trace_path_override"] = trace_options[selection]
+                    st.success("Trace selected. Switch to Trace Viewer tab.")
 
 
 if __name__ == "__main__":

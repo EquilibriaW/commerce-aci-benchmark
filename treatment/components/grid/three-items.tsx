@@ -1,4 +1,5 @@
 import { GridTileImage } from 'components/grid/tile';
+import { getVariantFromCookies, mulberry32, shuffle } from 'lib/benchmark/variants';
 import { getCollectionProducts } from 'lib/shopify';
 import type { Product } from 'lib/shopify/types';
 import Link from 'next/link';
@@ -49,7 +50,10 @@ export async function ThreeItemGrid() {
 
   if (!homepageItems[0] || !homepageItems[1] || !homepageItems[2]) return null;
 
-  const [firstProduct, secondProduct, thirdProduct] = homepageItems;
+  const variant = getVariantFromCookies();
+  const rng = mulberry32(variant.seed);
+  const shuffled = shuffle(homepageItems.slice(0, 3), rng);
+  const [firstProduct, secondProduct, thirdProduct] = shuffled;
 
   return (
     <section className="mx-auto grid max-w-(--breakpoint-2xl) gap-4 px-4 pb-4 md:grid-cols-6 md:grid-rows-2 lg:max-h-[calc(100vh-200px)]">

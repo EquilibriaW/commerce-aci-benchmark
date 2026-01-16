@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
-import { deleteStoredCart, setStoredCart, deleteCompletedOrder } from 'lib/mock/storage';
+import { clearEvents, deleteCompletedOrder, deleteStoredCart, setStoredCart } from 'lib/mock/storage';
+import { parseVariantLevel, parseVariantSeed } from 'lib/benchmark/variants';
 import { NextRequest, NextResponse } from 'next/server';
 import { Cart } from 'lib/shopify/types';
 
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
     if (oldCartId) {
       deleteStoredCart(oldCartId);
       deleteCompletedOrder(oldCartId);
+      clearEvents(oldCartId);
     }
 
     // Pattern B: Server mints fresh session ID
@@ -50,9 +52,14 @@ export async function POST(request: NextRequest) {
     };
     setStoredCart(newSessionId, emptyCart);
 
+    const variantSeed = parseVariantSeed(request.headers.get('X-Benchmark-Variant-Seed'));
+    const variantLevel = parseVariantLevel(request.headers.get('X-Benchmark-Variant-Level'));
+
     const response = NextResponse.json({
       status: 'reset_complete',
       session_id: newSessionId,
+      variant_seed: variantSeed,
+      variant_level: variantLevel,
       timestamp: new Date().toISOString()
     }, {
       status: 200,
@@ -61,6 +68,18 @@ export async function POST(request: NextRequest) {
 
     // Set fresh cart cookie
     response.cookies.set('cartId', newSessionId, {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax'
+    });
+
+    response.cookies.set('variantSeed', String(variantSeed), {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax'
+    });
+
+    response.cookies.set('variantLevel', String(variantLevel), {
       path: '/',
       httpOnly: true,
       sameSite: 'lax'

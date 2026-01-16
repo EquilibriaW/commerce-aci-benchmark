@@ -15,6 +15,7 @@ import { Cart } from '../shopify/types';
 const STORAGE_DIR = join(process.cwd(), '.cart-storage');
 const CARTS_DIR = join(STORAGE_DIR, 'carts');
 const ORDERS_DIR = join(STORAGE_DIR, 'orders');
+const EVENTS_DIR = join(STORAGE_DIR, 'events');
 
 // Order structure for completed checkouts
 export interface CompletedOrder {
@@ -38,6 +39,13 @@ export interface CompletedOrder {
   completed_at: string;
 }
 
+export interface SessionEvent {
+  id: string;
+  type: string;
+  at: string;
+  payload?: Record<string, unknown>;
+}
+
 function ensureDir(dir: string): void {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
@@ -47,6 +55,7 @@ function ensureDir(dir: string): void {
 function ensureStorageDirs(): void {
   ensureDir(CARTS_DIR);
   ensureDir(ORDERS_DIR);
+  ensureDir(EVENTS_DIR);
 }
 
 /**
@@ -200,5 +209,36 @@ export function getLastCompletedOrder(): CompletedOrder | undefined {
     return latestOrder;
   } catch {
     return undefined;
+  }
+}
+
+// --- EVENT STORAGE ---
+
+function eventsPath(sessionId: string): string {
+  return join(EVENTS_DIR, `${safeFilename(sessionId)}.json`);
+}
+
+export function getEvents(sessionId: string): SessionEvent[] {
+  ensureStorageDirs();
+  return readJSON<SessionEvent[]>(eventsPath(sessionId)) || [];
+}
+
+export function appendEvent(sessionId: string, event: SessionEvent): void {
+  ensureStorageDirs();
+  const path = eventsPath(sessionId);
+  const events = getEvents(sessionId);
+  events.push(event);
+  atomicWriteJSON(path, events);
+}
+
+export function clearEvents(sessionId: string): void {
+  ensureStorageDirs();
+  const path = eventsPath(sessionId);
+  if (existsSync(path)) {
+    try {
+      unlinkSync(path);
+    } catch (error) {
+      console.error(`Error deleting events ${sessionId}:`, error);
+    }
   }
 }

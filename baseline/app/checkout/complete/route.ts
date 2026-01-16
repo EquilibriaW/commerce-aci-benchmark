@@ -1,3 +1,5 @@
+import { getVariantFromCookies } from 'lib/benchmark/variants';
+import { logEvent } from 'lib/mock/events';
 import { getCart, saveCompletedOrder, setStoredCart } from 'lib/shopify';
 import { Cart } from 'lib/shopify/types';
 import { cookies } from 'next/headers';
@@ -69,6 +71,12 @@ export async function POST(request: Request) {
 
     // Save using the cartId as the session key
     saveCompletedOrder(cartId, order);
+
+    logEvent('CHECKOUT_COMPLETE', {
+      order_id: order.id,
+      total_items: order.total_items,
+      total_price_cents: order.total_price_cents
+    });
   }
 
   // Reset cart to empty under same cartId (parallel-safe, keeps cookie)
@@ -85,6 +93,12 @@ export async function POST(request: Request) {
       totalQuantity: 0
     };
     setStoredCart(cartId, emptyCart);
+  }
+
+  const variant = getVariantFromCookies();
+  if (variant.level >= 3 && Math.abs(variant.seed) % 3 === 0) {
+    const delayMs = 800 + (Math.abs(variant.seed) % 8) * 100;
+    await new Promise(resolve => setTimeout(resolve, delayMs));
   }
 
   // Redirect to confirmation page

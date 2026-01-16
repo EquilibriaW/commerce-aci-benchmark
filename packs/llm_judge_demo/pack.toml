@@ -10,4 +10,12 @@ kind = "llm"
 entrypoint = "evaluators.py:goal_adherence"
 severity = "warn"
 description = "Optional LLM judge that scores goal adherence from the final response."
-default_config = { model = "claude-3-5-haiku-20241022", min_score = 3 }
+default_config = { model = "claude-3-5-haiku-20241022", min_score = 3, system_prompt = "" }
+
+[[evaluators]]
+id = "failure_diagnosis"
+kind = "llm"
+entrypoint = "evaluators.py:failure_diagnosis"
+severity = "warn"
+description = "Optional LLM judge that diagnoses failure modes with a custom rubric."
+default_config = { model = "claude-3-5-haiku-20241022", rubric = "Identify likely failure modes and whether the run should be marked as fail or uncertain based on the trace and final state.", system_prompt = "" }

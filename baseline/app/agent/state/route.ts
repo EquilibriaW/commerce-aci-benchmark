@@ -1,3 +1,5 @@
+import { getEvents } from 'lib/mock/storage';
+import { parseVariantLevel, parseVariantSeed } from 'lib/benchmark/variants';
 import { getCart, getCompletedOrder } from 'lib/shopify';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -35,8 +37,30 @@ export async function GET(request: NextRequest) {
     // Get completed order for THIS session only (session-scoped by cartId)
     const cartId = request.cookies.get('cartId')?.value;
     const completedOrder = cartId ? getCompletedOrder(cartId) : undefined;
+    const events = cartId ? getEvents(cartId) : [];
+    const countsByType = events.reduce<Record<string, number>>((acc, event) => {
+      acc[event.type] = (acc[event.type] || 0) + 1;
+      return acc;
+    }, {});
+    const checkoutStarted = (countsByType.START_CHECKOUT || 0) > 0;
+    const hasCartItems = (cart?.totalQuantity || 0) > 0;
+
+    const variantSeed = parseVariantSeed(request.cookies.get('variantSeed')?.value);
+    const variantLevel = parseVariantLevel(request.cookies.get('variantLevel')?.value);
+
+    const stage = completedOrder
+      ? 'done'
+      : checkoutStarted
+        ? 'checkout'
+        : hasCartItems
+          ? 'cart'
+          : 'browse';
 
     const state = {
+      variant: {
+        seed: variantSeed,
+        level: variantLevel
+      },
       cart: cart ? {
         id: cart.id,
         items: cart.lines.map(line => {
@@ -63,6 +87,18 @@ export async function GET(request: NextRequest) {
         total_items: 0,
         total_price_cents: 0,
         currency: 'USD'
+      },
+      events: {
+        total: events.length,
+        last_n: events.slice(-50),
+        counts_by_type: countsByType
+      },
+      stage,
+      progress: {
+        has_cart_items: hasCartItems,
+        checkout_started: checkoutStarted,
+        order_completed: Boolean(completedOrder),
+        unique_event_types: Object.keys(countsByType).length
       },
       // Include completed order if checkout was completed
       last_order: completedOrder || null,

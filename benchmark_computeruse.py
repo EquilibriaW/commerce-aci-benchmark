@@ -83,6 +83,12 @@ GUIDELINES:
 
 When the task is successfully completed, respond with "TASK_COMPLETE"."""
 
+MODEL_ALIASES = {
+    "sonnet": "claude-sonnet-4-5-20250929",
+    "haiku": "claude-3-5-haiku-20241022"
+}
+DEFAULT_MODEL = MODEL_ALIASES["sonnet"]
+
 ASK_USER_TAG = "ASK_USER:"
 
 
@@ -279,22 +285,37 @@ class ComputerUseAgent:
         self.action_log.append(log_entry)
         console.print(f"    [dim]{log_entry}[/dim]")
 
-    async def reset_session(self, base_url: str, discoverability: str = "navbar", capability: str = "advantage"):
+    async def reset_session(
+        self,
+        base_url: str,
+        discoverability: str = "navbar",
+        capability: str = "advantage",
+        variant_seed: Optional[int] = None,
+        variant_level: Optional[int] = None
+    ):
         """Reset the session via API using Playwright's request context for cookie consistency.
 
         Args:
             base_url: Base URL of the app
             discoverability: "navbar" (visible link) or "hidden" (no link)
             capability: "advantage" (agent actions enabled) or "parity" (read-only)
+            variant_seed: Optional seed for deterministic UI variants
+            variant_level: Optional difficulty level for UI variants
         """
         # Use Playwright's request context - cookies are automatically shared with browser
+        headers = {
+            "X-Benchmark-Secret": BENCHMARK_SECRET,
+            "X-Benchmark-Discoverability": discoverability,
+            "X-Benchmark-Capability": capability
+        }
+        if variant_seed is not None:
+            headers["X-Benchmark-Variant-Seed"] = str(variant_seed)
+        if variant_level is not None:
+            headers["X-Benchmark-Variant-Level"] = str(variant_level)
+
         resp = await self.page.context.request.post(
             f"{base_url}/agent/reset",
-            headers={
-                "X-Benchmark-Secret": BENCHMARK_SECRET,
-                "X-Benchmark-Discoverability": discoverability,
-                "X-Benchmark-Capability": capability
-            }
+            headers=headers
         )
         if resp.status != 200:
             raise Exception(f"Failed to reset session: {resp.status} {await resp.text()}")
@@ -302,13 +323,20 @@ class ComputerUseAgent:
     async def get_ground_truth(self, base_url: str) -> dict:
         """Get the current cart state from the API using Playwright's request context."""
         # Use Playwright's request context - cookies are automatically shared
-        resp = await self.page.context.request.get(
-            f"{base_url}/agent/state",
-            headers={"X-Benchmark-Secret": BENCHMARK_SECRET}
-        )
-        if resp.status == 200:
-            return await resp.json()
-        return {}
+        last_error: Optional[Exception] = None
+        for attempt in range(3):
+            try:
+                resp = await self.page.context.request.get(
+                    f"{base_url}/agent/state",
+                    headers={"X-Benchmark-Secret": BENCHMARK_SECRET}
+                )
+                if resp.status == 200:
+                    return await resp.json()
+                return {}
+            except Exception as e:
+                last_error = e
+                await asyncio.sleep(0.5 * (2 ** attempt))
+        return {"error": str(last_error)} if last_error else {}
 
     def _truncate_history(self):
         """Truncate conversation history while preserving initial prompt.
@@ -858,6 +886,8 @@ async def run_trial(
     run_num: int,
     discoverability: str = "navbar",
     capability: str = "advantage",
+    variant_seed: Optional[int] = None,
+    variant_level: Optional[int] = None,
     system_prompt: str = SYSTEM_PROMPT,
     model: str = ComputerUseAgent.DEFAULT_MODEL,
     guidance_meta: Optional[dict[str, Any]] = None,
@@ -872,6 +902,8 @@ async def run_trial(
         run_num: Run number (1-indexed)
         discoverability: "navbar" or "hidden" - controls agent UI visibility
         capability: "advantage" or "parity" - controls agent actions
+        variant_seed: Seed for deterministic UI variants (optional)
+        variant_level: Difficulty level for UI variants (optional)
         system_prompt: System prompt for the agent
         model: Model to use - "sonnet" or "haiku"
     """
@@ -907,7 +939,13 @@ async def run_trial(
         agent = ComputerUseAgent(page, ANTHROPIC_API_KEY, debug_dir=debug_dir, system_prompt=system_prompt, model=model)
 
         # Reset session with experimental factors
-        await agent.reset_session(api_url, discoverability=discoverability, capability=capability)
+        await agent.reset_session(
+            api_url,
+            discoverability=discoverability,
+            capability=capability,
+            variant_seed=variant_seed,
+            variant_level=variant_level
+        )
 
         # Navigate to starting page
         await page.goto(target_url)
@@ -937,6 +975,8 @@ async def run_trial(
             # Small delay between actions
             await asyncio.sleep(0.3)
 
+        final_state = await agent.get_ground_truth(api_url)
+
         # End wall time tracking
         wall_time_seconds = time.perf_counter() - start_time
 
@@ -962,6 +1002,10 @@ async def run_trial(
                 "display_height": DISPLAY_HEIGHT,
                 "max_iterations": MAX_ITERATIONS,
                 "system_prompt": agent.system_prompt,
+                "variant_seed": variant_seed,
+                "variant_level": variant_level,
+                "success": success,
+                "final_state": final_state,
             }
             if guidance_meta:
                 trace_meta.update(guidance_meta)
@@ -980,7 +1024,8 @@ async def run_trial(
             "wall_time_seconds": round(wall_time_seconds, 2),
             "forced_agent_start": forced_agent_start,
             "action_log": agent.action_log,
-            "trace_path": str((debug_dir / "trace.json")) if debug_dir else None
+            "trace_path": str((debug_dir / "trace.json")) if debug_dir else None,
+            "final_state": final_state
         }
 
 

@@ -8,6 +8,7 @@ import {
   removeFromCart,
   updateCart
 } from 'lib/shopify';
+import { logEvent } from 'lib/mock/events';
 import { revalidateTag } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -97,6 +98,7 @@ export async function updateItemQuantity(
 
 export async function redirectToCheckout() {
   let cart = await getCart();
+  logEvent('START_CHECKOUT');
   redirect(cart!.checkoutUrl);
 }
 

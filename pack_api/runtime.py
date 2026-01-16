@@ -199,6 +199,7 @@ def run_evaluators_on_trace(
     selected_packs: Optional[list[str]] = None,
     selected_evaluators: Optional[list[str]] = None,
     config_overrides: Optional[dict[str, dict[str, Any]]] = None,
+    judge_system_prompt: Optional[str] = None,
     registry: Optional[PackRegistry] = None,
 ) -> list[EvalResult]:
     """Run pack evaluators on a trace and return results."""
@@ -212,6 +213,8 @@ def run_evaluators_on_trace(
         spec = registry.get_evaluator_spec(pack_id, evaluator_id)
         overrides = _select_override(config_overrides, pack_id, evaluator_id)
         config = _merge_config(spec.default_config, overrides)
+        if spec.kind == "llm" and judge_system_prompt and not config.get("system_prompt"):
+            config["system_prompt"] = judge_system_prompt
         try:
             evaluator = registry.load_evaluator(pack_id, evaluator_id)
             raw_result = evaluator(trace, config)

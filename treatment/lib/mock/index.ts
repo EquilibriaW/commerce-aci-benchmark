@@ -8,6 +8,7 @@ import { Cart, Collection, Menu, Page, Product } from '../shopify/types';
 import { TAGS } from '../constants';
 import { mockProducts, mockCollections, mockMenus, mockPages } from './data';
 import { getStoredCart, setStoredCart, deleteStoredCart, clearAllCarts, saveCompletedOrder, getCompletedOrder, getLastCompletedOrder, clearAllOrders, deleteCompletedOrder, CompletedOrder } from './storage';
+import { logEvent } from './events';
 
 function generateCartId(): string {
   return `cart_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -87,6 +88,12 @@ export async function addToCart(
       continue;
     }
 
+    logEvent('ADD_TO_CART', {
+      slug: foundProduct.handle,
+      variant: foundVariant.title,
+      quantity: line.quantity
+    });
+
     // Check if line already exists
     const existingLineIndex = cart.lines.findIndex(
       l => l.merchandise.id === line.merchandiseId
@@ -141,7 +148,17 @@ export async function removeFromCart(lineIds: string[]): Promise<Cart> {
     throw new Error('Cart not found');
   }
 
+  const removedLines = cart.lines.filter(line => lineIds.includes(line.id!));
+
   cart.lines = cart.lines.filter(line => !lineIds.includes(line.id!));
+
+  for (const line of removedLines) {
+    logEvent('REMOVE_FROM_CART', {
+      slug: line.merchandise.product.handle,
+      variant: line.merchandise.title,
+      quantity_removed: line.quantity
+    });
+  }
 
   const updatedCart = recalculateCart(cart);
   setStoredCart(cartId, updatedCart);
@@ -167,8 +184,18 @@ export async function updateCart(
     if (existingLine) {
       if (line.quantity === 0) {
         cart.lines = cart.lines.filter(l => l.id !== line.id);
+        logEvent('REMOVE_FROM_CART', {
+          slug: existingLine.merchandise.product.handle,
+          variant: existingLine.merchandise.title,
+          quantity_removed: existingLine.quantity
+        });
       } else {
         existingLine.quantity = line.quantity;
+        logEvent('UPDATE_QTY', {
+          slug: existingLine.merchandise.product.handle,
+          variant: existingLine.merchandise.title,
+          quantity: line.quantity
+        });
         // Find price for the variant
         for (const product of mockProducts) {
           const variant = product.variants.find(v => v.id === line.merchandiseId);

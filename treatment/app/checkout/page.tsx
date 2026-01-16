@@ -1,4 +1,5 @@
 import { getCart } from 'lib/shopify';
+import { getVariantFromCookies } from 'lib/benchmark/variants';
 import { redirect } from 'next/navigation';
 import Image from 'next/image';
 import Price from 'components/price';
@@ -19,6 +20,12 @@ export default async function CheckoutPage({
   if (!cart || cart.lines.length === 0) {
     redirect('/');
   }
+
+  const variant = getVariantFromCookies();
+  const submitLabels = ['Complete Demo Order', 'Place Order', 'Submit Order'];
+  const submitLabel = submitLabels[Math.abs(variant.seed) % submitLabels.length]!;
+  const swapFields = Math.abs(variant.seed) % 2 === 1;
+  const showDecoy = variant.level >= 2;
 
   const errorMessage = error === 'missing_fields'
     ? 'Please fill in both name and email fields.'
@@ -113,38 +120,79 @@ export default async function CheckoutPage({
 
           <form action="/checkout/complete" method="POST" className="mt-6">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                  Email <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  required
-                  placeholder="you@example.com"
-                  className="mt-1 block w-full rounded-md border border-neutral-300 px-3 py-2 text-sm placeholder-neutral-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
-                />
-              </div>
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                  Full Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  id="name"
-                  name="name"
-                  required
-                  placeholder="John Doe"
-                  className="mt-1 block w-full rounded-md border border-neutral-300 px-3 py-2 text-sm placeholder-neutral-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
-                />
-              </div>
+              {swapFields ? (
+                <>
+                  <div>
+                    <label htmlFor="name" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                      Full Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="name"
+                      name="name"
+                      required
+                      placeholder="John Doe"
+                      className="mt-1 block w-full rounded-md border border-neutral-300 px-3 py-2 text-sm placeholder-neutral-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                      Email <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      id="email"
+                      name="email"
+                      required
+                      placeholder="you@example.com"
+                      className="mt-1 block w-full rounded-md border border-neutral-300 px-3 py-2 text-sm placeholder-neutral-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                      Email <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      id="email"
+                      name="email"
+                      required
+                      placeholder="you@example.com"
+                      className="mt-1 block w-full rounded-md border border-neutral-300 px-3 py-2 text-sm placeholder-neutral-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="name" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                      Full Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="name"
+                      name="name"
+                      required
+                      placeholder="John Doe"
+                      className="mt-1 block w-full rounded-md border border-neutral-300 px-3 py-2 text-sm placeholder-neutral-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+                    />
+                  </div>
+                </>
+              )}
             </div>
+            {showDecoy && (
+              <button
+                type="button"
+                className="mt-6 w-full rounded-full border border-neutral-300 bg-white px-6 py-3 text-center text-sm font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-300"
+              >
+                Review Order
+              </button>
+            )}
             <button
               type="submit"
               className="mt-6 w-full rounded-full bg-blue-600 px-6 py-3 text-center text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
-              Complete Demo Order
+              {submitLabel}
             </button>
           </form>
         </div>

@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,28 @@ def _load_policy(policy_path: str | None) -> dict[str, Any]:
         return {}
     data = tomllib.loads(Path(policy_path).read_text(encoding="utf-8"))
     return dict(data.get("policy") or data)
+
+
+def _load_prompt(prompt: str | None, prompt_file: str | None) -> str | None:
+    if prompt_file:
+        return Path(prompt_file).read_text(encoding="utf-8")
+    if prompt:
+        return prompt
+    return None
+
+
+def _record_judge_prompt(trace: dict[str, Any], prompt: str | None, label: str = "global") -> bool:
+    if not prompt:
+        return False
+    meta = trace.get("meta") or {}
+    prompts = dict(meta.get("judge_system_prompts") or {})
+    hashes = dict(meta.get("judge_system_prompt_hashes") or {})
+    prompts[label] = prompt
+    hashes[label] = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    meta["judge_system_prompts"] = prompts
+    meta["judge_system_prompt_hashes"] = hashes
+    trace["meta"] = meta
+    return True
 
 
 def cmd_list_packs(args: argparse.Namespace) -> None:
@@ -76,7 +99,15 @@ def cmd_eval_trace(args: argparse.Namespace) -> None:
     packs = _parse_csv(args.eval_packs)
     registry = PackRegistry.discover()
     policy = _load_policy(args.policy)
-    results = run_evaluators_on_trace(trace, selected_packs=packs, registry=registry)
+    judge_prompt = _load_prompt(args.judge_system_prompt, args.judge_system_prompt_file)
+    if _record_judge_prompt(trace, judge_prompt):
+        trace_path.write_text(json.dumps(trace, indent=2), encoding="utf-8")
+    results = run_evaluators_on_trace(
+        trace,
+        selected_packs=packs,
+        registry=registry,
+        judge_system_prompt=judge_prompt,
+    )
     out_path = write_eval_results(trace_path, results, policy=policy)
     results_dicts = eval_results_to_dicts(results)
 
@@ -99,9 +130,17 @@ def cmd_eval_dir(args: argparse.Namespace) -> None:
     summary = []
     gate_failed_any = False
 
+    judge_prompt = _load_prompt(args.judge_system_prompt, args.judge_system_prompt_file)
     for trace_path in traces:
         trace = json.loads(trace_path.read_text(encoding="utf-8"))
-        results = run_evaluators_on_trace(trace, selected_packs=packs, registry=registry)
+        if _record_judge_prompt(trace, judge_prompt):
+            trace_path.write_text(json.dumps(trace, indent=2), encoding="utf-8")
+        results = run_evaluators_on_trace(
+            trace,
+            selected_packs=packs,
+            registry=registry,
+            judge_system_prompt=judge_prompt,
+        )
         out_path = write_eval_results(trace_path, results, policy=policy)
         gate_failed = gate_should_fail(results, policy)
         gate_failed_any = gate_failed_any or gate_failed
@@ -172,6 +211,8 @@ def build_parser() -> argparse.ArgumentParser:
     eval_trace.add_argument("--trace", type=str, required=True)
     eval_trace.add_argument("--eval-packs", "--packs", dest="eval_packs", type=str, default="")
     eval_trace.add_argument("--policy", type=str, default="")
+    eval_trace.add_argument("--judge-system-prompt", type=str, default="", help="System prompt for LLM evaluators")
+    eval_trace.add_argument("--judge-system-prompt-file", type=str, default="", help="File containing system prompt for LLM evaluators")
     eval_trace.add_argument("--json", action="store_true")
     eval_trace.set_defaults(func=cmd_eval_trace)
 
@@ -179,6 +220,8 @@ def build_parser() -> argparse.ArgumentParser:
     eval_dir.add_argument("--dir", type=str, required=True)
     eval_dir.add_argument("--eval-packs", "--packs", dest="eval_packs", type=str, default="")
     eval_dir.add_argument("--policy", type=str, default="")
+    eval_dir.add_argument("--judge-system-prompt", type=str, default="", help="System prompt for LLM evaluators")
+    eval_dir.add_argument("--judge-system-prompt-file", type=str, default="", help="File containing system prompt for LLM evaluators")
     eval_dir.add_argument("--json", action="store_true")
     eval_dir.set_defaults(func=cmd_eval_dir)
 

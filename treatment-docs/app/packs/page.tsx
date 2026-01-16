@@ -38,6 +38,24 @@ const html = `
   <li><strong>llm_judge_demo</strong>: optional LLM-based goal adherence judge (requires <code>ANTHROPIC_API_KEY</code>).</li>
 </ul>
 
+<h2>UI perturbations (seeded variants)</h2>
+<p>
+  The reliability runner can vary the UI deterministically using a seed and a difficulty level.
+  This does not change products or prices, only the surface form of the UI.
+</p>
+<ul>
+  <li><strong>Checkout field order</strong>: if <code>seed % 2 == 1</code>, the Full Name and Email fields are swapped.</li>
+  <li><strong>Submit label variation</strong>: the submit button label is chosen from
+    <code>["Complete Demo Order","Place Order","Submit Order"]</code> using the seed.</li>
+  <li><strong>Decoy button (level >= 2)</strong>: a non-submitting "Review Order" button is added above the real submit button.</li>
+  <li><strong>Homepage featured order</strong>: the three homepage items are shuffled using a seeded RNG.</li>
+  <li><strong>Optional latency (level >= 3)</strong>: when <code>seed % 3 == 0</code>, checkout completion adds a short delay.</li>
+</ul>
+<p>
+  Seeds and levels are passed via the reset endpoint headers
+  (<code>X-Benchmark-Variant-Seed</code>, <code>X-Benchmark-Variant-Level</code>).
+</p>
+
 <h2>Using packs in the UI</h2>
 <ul>
   <li><strong>Run Launcher</strong>: choose Guidance Packs and Eval Packs before running a task. The assembled system prompt preview shows exactly what changes.</li>
