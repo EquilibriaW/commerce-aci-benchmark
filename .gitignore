@@ -17,6 +17,11 @@ dist/
 # Cart storage (runtime data)
 .cart-storage/
 
+# Benchmark artifacts
+benchmark_results/
+debug_screenshots/
+.tmp_prompts/
+
 # Debug
 npm-debug.log*
 yarn-debug.log*
