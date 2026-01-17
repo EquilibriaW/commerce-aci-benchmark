@@ -8,13 +8,23 @@ Features
    - Run benchmark tasks or custom goals
    - Configure environment, model, and system prompt
 
-2) Trace Viewer
+2) Packs & Guidance
+   - Browse packs and components
+   - Reference CLI usage
+
+3) Runs Dashboard
+   - Filter past runs and open traces
+
+4) Trace Viewer
    - Step-by-step trace inspection
    - Shows branch lineage for branched traces
 
-3) Trace Trees
+5) Trace Trees
    - Create and explore trace branches
    - Test counterfactuals with different prompts, models, or actions
+
+6) Reliability Dashboard
+   - Seeded reliability sweeps and adaptive expansion
 
 Usage
 -----
@@ -97,6 +107,40 @@ def _safe_read_json(path: Path) -> Optional[dict[str, Any]]:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+def _parse_condition_fields(condition_name: str) -> dict[str, str]:
+    parts = [p for p in (condition_name or "").split("/") if p]
+    if len(parts) >= 5:
+        return {
+            "run_type": parts[0],
+            "app": parts[1],
+            "start": parts[2],
+            "discoverability": parts[3],
+            "capability": parts[4],
+        }
+    return {}
+
+
+def _summarize_eval_results(trace_path: Path) -> dict[str, Any]:
+    eval_path = trace_path.parent / "eval_results.json"
+    if not eval_path.exists():
+        return {"gate_status": "", "gate_failed": None, "gate_failed_count": 0}
+    payload = _safe_read_json(eval_path) or {}
+    results = payload.get("results") or []
+    failed = sum(1 for r in results if r.get("decision") == "fail")
+    gate_failed = bool(payload.get("gate_failed"))
+    status = "FAIL" if gate_failed else "PASS"
+    return {"gate_status": f"{status} ({failed})", "gate_failed": gate_failed, "gate_failed_count": failed}
+
+
+def _expand_evaluator_selectors(registry: PackRegistry, pack_ids: list[str]) -> list[str]:
+    selectors: list[str] = []
+    for pack_id in pack_ids:
+        manifest = registry.get_manifest(pack_id)
+        for spec in manifest.evaluators:
+            selectors.append(f"{pack_id}:{spec.id}")
+    return selectors
 
 
 def find_traces(root: Path) -> list[TraceItem]:
@@ -451,7 +495,14 @@ def main() -> None:
     traces = find_traces(debug_root_p)
 
     # Always show tabs - Run Launcher doesn't require traces
-    tabs = st.tabs(["Run Launcher", "Packs & Guidance", "Trace Viewer", "Trace Trees", "Reliability Dashboard"])
+    tabs = st.tabs([
+        "Run Launcher",
+        "Packs & Guidance",
+        "Runs Dashboard",
+        "Trace Viewer",
+        "Trace Trees",
+        "Reliability Dashboard",
+    ])
 
     # Trace selection (only if traces exist)
     trace_item = None
@@ -640,8 +691,8 @@ def main() -> None:
                     "--app", app,
                     "--start", start,
                     "--discoverability", discoverability,
-                    "--capability", capability]
-            # Note: flow_fuzz.py may need --model support added separately
+                    "--capability", capability,
+                    "--model", model]
         else:
             cmd += ["benchmark_computeruse.py",
                     "--app", app,
@@ -1019,15 +1070,116 @@ def main() -> None:
         )
         st.markdown("### CLI examples")
         st.code(
-            "python benchmark_computeruse.py --guidance-packs guidance_basics --eval-packs commerce_safety\n"
+            "python benchmark_computeruse.py --guidance-packs guidance_basics:baseline_guidance --eval-packs commerce_safety:max_steps_budget\n"
             "python flow_fuzz.py --fuzz-pack basic_flow_fuzz --fuzzer basic_strategies --turns 3,4,5\n"
             "python pack_cli.py list-components --type all\n"
-            "python pack_cli.py eval-trace --trace debug_screenshots/.../trace.json --eval-packs commerce_safety",
+            "python pack_cli.py eval-trace --trace debug_screenshots/.../trace.json --eval-packs commerce_safety:max_steps_budget",
             language="bash",
         )
 
-    # === Trace Viewer (Tab 2) ===
+    # === Runs Dashboard (Tab 2) ===
     with tabs[2]:
+        st.subheader("Runs Dashboard")
+        st.caption("Filter and open past runs. Click a row to jump into Trace Viewer.")
+        if not traces:
+            st.info("No traces available. Run a benchmark first.")
+        else:
+            rows = []
+            for item in traces:
+                payload = _safe_read_json(item.path) or {}
+                meta_row = payload.get("meta") or item.meta or {}
+                condition_name = meta_row.get("condition_name") or meta_row.get("condition") or ""
+                parsed = _parse_condition_fields(condition_name)
+                eval_summary = _summarize_eval_results(item.path)
+                steps_count = len(payload.get("steps") or [])
+                success_flag = meta_row.get("success")
+                success_label = "" if success_flag is None else ("yes" if success_flag else "no")
+                model = meta_row.get("model") or meta_row.get("model_full_name") or ""
+                rows.append({
+                    "timestamp": meta_row.get("run_timestamp") or "",
+                    "condition_name": condition_name,
+                    "task": meta_row.get("task_id") or meta_row.get("scenario_id") or "",
+                    "success": success_label,
+                    "steps_count": steps_count,
+                    "model": model,
+                    "app": parsed.get("app", ""),
+                    "discoverability": parsed.get("discoverability", ""),
+                    "capability": parsed.get("capability", ""),
+                    "gate_status": eval_summary.get("gate_status", ""),
+                    "trace_path": str(item.path),
+                    "gate_failed": eval_summary.get("gate_failed"),
+                })
+
+            df = pd.DataFrame(rows).fillna("")
+            if df.empty:
+                st.info("No runs found.")
+            else:
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    app_opts = sorted({v for v in df["app"].tolist() if v})
+                    app_sel = st.multiselect("App", options=app_opts, default=app_opts)
+                with col2:
+                    cap_opts = sorted({v for v in df["capability"].tolist() if v})
+                    cap_sel = st.multiselect("Capability", options=cap_opts, default=cap_opts)
+                with col3:
+                    disc_opts = sorted({v for v in df["discoverability"].tolist() if v})
+                    disc_sel = st.multiselect("Discoverability", options=disc_opts, default=disc_opts)
+                with col4:
+                    model_opts = sorted({v for v in df["model"].tolist() if v})
+                    model_sel = st.multiselect("Model", options=model_opts, default=model_opts)
+
+                gate_failed_only = st.checkbox("Gate failed only", value=False)
+
+                filtered = df
+                if app_sel:
+                    filtered = filtered[filtered["app"].isin(app_sel)]
+                if cap_sel:
+                    filtered = filtered[filtered["capability"].isin(cap_sel)]
+                if disc_sel:
+                    filtered = filtered[filtered["discoverability"].isin(disc_sel)]
+                if model_sel:
+                    filtered = filtered[filtered["model"].isin(model_sel)]
+                if gate_failed_only:
+                    filtered = filtered[filtered["gate_failed"] == True]
+
+                if filtered.empty:
+                    st.info("No runs match the current filters.")
+                else:
+                    display_cols = [
+                        "timestamp",
+                        "condition_name",
+                        "task",
+                        "success",
+                        "steps_count",
+                        "model",
+                        "app",
+                        "discoverability",
+                        "capability",
+                        "gate_status",
+                    ]
+                    display_rows = []
+                    trace_paths = []
+                    for _, row in filtered.iterrows():
+                        display_rows.append({k: row.get(k, "") for k in display_cols})
+                        trace_paths.append(row.get("trace_path", ""))
+                    display_df = pd.DataFrame(display_rows)
+                    selection = st.dataframe(
+                        display_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        on_select="rerun",
+                        selection_mode="single",
+                    )
+                    selection_state = getattr(selection, "selection", None)
+                    if selection_state and selection_state.get("rows"):
+                        row_idx = selection_state["rows"][0]
+                        target = trace_paths[row_idx]
+                        if target:
+                            st.session_state["trace_path_override"] = target
+                            st.rerun()
+
+    # === Trace Viewer (Tab 3) ===
+    with tabs[3]:
         if not traces:
             st.info("No traces available. Run a benchmark first.")
         elif not steps:
@@ -1396,10 +1548,11 @@ def main() -> None:
                 elif registry is None:
                     st.warning("No pack registry available.")
                 else:
+                    selected_evaluators = _expand_evaluator_selectors(registry, list(selected_packs))
                     with st.spinner("Running evaluators..."):
                         results = run_evaluators_on_trace(
                             trace,
-                            selected_packs=selected_packs,
+                            selected_evaluators=selected_evaluators,
                             registry=registry,
                             judge_system_prompt=judge_prompt,
                         )
@@ -1407,7 +1560,7 @@ def main() -> None:
                         _persist_judge_prompt(trace_item.path, trace, judge_prompt, "global")
                     st.session_state["eval_results"] = results
                     st.session_state["eval_trace_path"] = str(trace_item.path) if trace_item else ""
-                    st.session_state["eval_packs"] = list(selected_packs)
+                    st.session_state["eval_selectors"] = list(selected_evaluators)
 
             if st.session_state.get("eval_trace_path") == str(trace_item.path):
                 results = st.session_state.get("eval_results") or []
@@ -1454,11 +1607,21 @@ def main() -> None:
                                 st.json(res.metrics)
                             if res.evidence:
                                 st.markdown("**Evidence**")
-                                for ev in res.evidence:
+                                for idx, ev in enumerate(res.evidence):
                                     if isinstance(ev, dict):
                                         step = ev.get("step_index")
                                         if step is not None:
-                                            st.write(f"Step {step}")
+                                            try:
+                                                step_num = int(step)
+                                            except Exception:
+                                                step_num = None
+                                            if step_num is not None:
+                                                st.write(f"Step {step_num}")
+                                                jump_key = f"jump_eval_{res.pack_id}_{res.evaluator_id}_{idx}_{step_num}"
+                                                if st.button(f"Jump to step {step_num}", key=jump_key):
+                                                    if 1 <= step_num <= total_steps:
+                                                        st.session_state["trace_step"] = step_num
+                                                        st.rerun()
                                         screenshot_path = ev.get("screenshot_path")
                                         if _img_exists(screenshot_path):
                                             st.image(str(screenshot_path), use_container_width=True)
@@ -1569,8 +1732,8 @@ def main() -> None:
                                 else:
                                     st.error(result.error)
 
-    # === Trace Trees (Tab 3) ===
-    with tabs[3]:
+    # === Trace Trees (Tab 4) ===
+    with tabs[4]:
         trees_dir = debug_root_p / "trees"
         available_trees = TraceTree.list_trees(trees_dir) if trees_dir.exists() else []
 
@@ -1733,8 +1896,8 @@ def main() -> None:
         elif not traces:
             st.info("Run a benchmark first to generate traces.")
 
-    # === Reliability Dashboard (Tab 4) ===
-    with tabs[4]:
+    # === Reliability Dashboard (Tab 5) ===
+    with tabs[5]:
         st.subheader("Reliability Dashboard")
         st.caption("Run seeded sweeps across UI variants and summarize failures and event coverage.")
 
@@ -1946,12 +2109,12 @@ def main() -> None:
                 run_map: dict[str, dict] = {}
                 for run in run_rows:
                     label = (
-                        f\"{'adaptive' if run.get('is_adaptive') else 'base'} "
-                        f\"seed {run.get('seed')} "
-                        f\"L{run.get('variant_level')} "
-                        f\"{'PASS' if run.get('success') else 'FAIL'} "
-                        f\"stage={run.get('stage')} "
-                        f\"reason={run.get('failure_reason')}\"
+                        f"{'adaptive' if run.get('is_adaptive') else 'base'} "
+                        f"seed {run.get('seed')} "
+                        f"L{run.get('variant_level')} "
+                        f"{'PASS' if run.get('success') else 'FAIL'} "
+                        f"stage={run.get('stage')} "
+                        f"reason={run.get('failure_reason')}"
                     )
                     run_labels.append(label)
                     run_map[label] = run
@@ -1966,7 +2129,7 @@ def main() -> None:
 
                 missing = selected_run.get("missing_events") or []
                 if missing:
-                    st.caption(f\"Missing events: {', '.join(missing)}\")
+                    st.caption(f"Missing events: {', '.join(missing)}")
 
                 cart_preview = selected_run.get("cart_items_preview") or []
                 if cart_preview:
@@ -1976,7 +2139,7 @@ def main() -> None:
                 action_tail = selected_run.get("action_log_tail") or []
                 if action_tail:
                     st.markdown("**Last actions**")
-                    st.code(\"\\n\".join(action_tail), language=None)
+                    st.code("\n".join(action_tail), language=None)
 
                 hint_map = {
                     "no_items_added": "No cart items detected. Suggest improving product discovery or adding a clarifying question when unsure.",
