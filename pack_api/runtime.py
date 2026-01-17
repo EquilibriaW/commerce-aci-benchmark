@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 import traceback
 from dataclasses import asdict
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
@@ -111,6 +110,7 @@ def _resolve_component_selectors(
     selected_items: Optional[list[str]],
     component_attr: str,
 ) -> list[tuple[str, str]]:
+    """Resolve component selectors into concrete (pack_id, component_id) pairs."""
     resolved: list[tuple[str, str]] = []
     seen = set()
 
@@ -122,10 +122,23 @@ def _resolve_component_selectors(
         resolved.append(key)
 
     pack_ids = _resolve_pack_ids(registry, selected_packs)
+    manifests = {p.id: p for p in registry.list_packs()}
+    for pack_id in pack_ids:
+        if pack_id not in manifests:
+            raise ValueError(f"Pack not found: {pack_id}")
+
+    component_ids_by_pack: dict[str, set[str]] = {}
+    component_index: dict[str, list[str]] = {}
+    for pack_id in pack_ids:
+        manifest = manifests[pack_id]
+        ids = {spec.id for spec in getattr(manifest, component_attr) if spec.id}
+        component_ids_by_pack[pack_id] = ids
+        for cid in ids:
+            component_index.setdefault(cid, []).append(pack_id)
 
     if not selected_items:
         for pack_id in pack_ids:
-            manifest = registry.get_manifest(pack_id)
+            manifest = manifests[pack_id]
             for spec in getattr(manifest, component_attr):
                 add_pair(pack_id, spec.id)
         return resolved
@@ -135,19 +148,26 @@ def _resolve_component_selectors(
             continue
         if ":" in item:
             pack_id, item_id = item.split(":", 1)
+            if pack_id not in pack_ids:
+                raise ValueError(f"Pack not found for selector: {item}")
+            if item_id not in component_ids_by_pack.get(pack_id, set()):
+                raise ValueError(f"Component not found: {item}")
             add_pair(pack_id, item_id)
             continue
         if item in pack_ids:
-            manifest = registry.get_manifest(item)
+            manifest = manifests[item]
             for spec in getattr(manifest, component_attr):
                 add_pair(item, spec.id)
             continue
-        # Assume global unique IDs
-        for manifest in registry.list_packs():
-            for spec in getattr(manifest, component_attr):
-                if spec.id == item:
-                    add_pair(manifest.id, spec.id)
-                    break
+        matches = component_index.get(item, [])
+        if not matches:
+            raise ValueError(f"Component id not found: {item}")
+        if len(matches) > 1:
+            raise ValueError(
+                "Component id is ambiguous across packs. "
+                f"Use pack_id:{item}. Matches: {', '.join(sorted(matches))}"
+            )
+        add_pair(matches[0], item)
 
     return resolved
 

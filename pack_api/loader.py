@@ -123,11 +123,6 @@ class PackRegistry:
         return cls(pack_dirs)
 
     def _load_packs(self) -> None:
-        global_eval_ids: dict[str, str] = {}
-        global_fuzz_ids: dict[str, str] = {}
-        global_guidance_ids: dict[str, str] = {}
-        global_advisor_ids: dict[str, str] = {}
-
         for pack_dir in self._pack_dirs:
             pack_toml = pack_dir / "pack.toml"
             if not pack_toml.exists():
@@ -163,23 +158,6 @@ class PackRegistry:
                 raise ValueError(f"Duplicate guidance id in pack {pack_id}")
             if len(advisor_ids) != len(set(advisor_ids)):
                 raise ValueError(f"Duplicate advisor id in pack {pack_id}")
-
-            for eval_id in eval_ids:
-                if eval_id in global_eval_ids:
-                    raise ValueError(f"Duplicate evaluator id across packs: {eval_id} ({pack_id}, {global_eval_ids[eval_id]})")
-                global_eval_ids[eval_id] = pack_id
-            for fuzz_id in fuzz_ids:
-                if fuzz_id in global_fuzz_ids:
-                    raise ValueError(f"Duplicate fuzzer id across packs: {fuzz_id} ({pack_id}, {global_fuzz_ids[fuzz_id]})")
-                global_fuzz_ids[fuzz_id] = pack_id
-            for guid_id in guidance_ids:
-                if guid_id in global_guidance_ids:
-                    raise ValueError(f"Duplicate guidance id across packs: {guid_id} ({pack_id}, {global_guidance_ids[guid_id]})")
-                global_guidance_ids[guid_id] = pack_id
-            for adv_id in advisor_ids:
-                if adv_id in global_advisor_ids:
-                    raise ValueError(f"Duplicate advisor id across packs: {adv_id} ({pack_id}, {global_advisor_ids[adv_id]})")
-                global_advisor_ids[adv_id] = pack_id
 
             manifest = PackManifest(
                 id=pack_id,

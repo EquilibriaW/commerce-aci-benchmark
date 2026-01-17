@@ -96,7 +96,7 @@ def cmd_list_components(args: argparse.Namespace) -> None:
 def cmd_eval_trace(args: argparse.Namespace) -> None:
     trace_path = Path(args.trace)
     trace = json.loads(trace_path.read_text(encoding="utf-8"))
-    packs = _parse_csv(args.eval_packs)
+    selectors = _parse_csv(args.eval_packs)
     registry = PackRegistry.discover()
     policy = _load_policy(args.policy)
     judge_prompt = _load_prompt(args.judge_system_prompt, args.judge_system_prompt_file)
@@ -104,7 +104,7 @@ def cmd_eval_trace(args: argparse.Namespace) -> None:
         trace_path.write_text(json.dumps(trace, indent=2), encoding="utf-8")
     results = run_evaluators_on_trace(
         trace,
-        selected_packs=packs,
+        selected_evaluators=selectors,
         registry=registry,
         judge_system_prompt=judge_prompt,
     )
@@ -123,7 +123,7 @@ def cmd_eval_trace(args: argparse.Namespace) -> None:
 
 def cmd_eval_dir(args: argparse.Namespace) -> None:
     root = Path(args.dir)
-    packs = _parse_csv(args.eval_packs)
+    selectors = _parse_csv(args.eval_packs)
     policy = _load_policy(args.policy)
     registry = PackRegistry.discover()
     traces = sorted(root.rglob("trace.json"))
@@ -137,7 +137,7 @@ def cmd_eval_dir(args: argparse.Namespace) -> None:
             trace_path.write_text(json.dumps(trace, indent=2), encoding="utf-8")
         results = run_evaluators_on_trace(
             trace,
-            selected_packs=packs,
+            selected_evaluators=selectors,
             registry=registry,
             judge_system_prompt=judge_prompt,
         )
@@ -209,7 +209,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     eval_trace = sub.add_parser("eval-trace", help="Run evaluators on a trace")
     eval_trace.add_argument("--trace", type=str, required=True)
-    eval_trace.add_argument("--eval-packs", "--packs", dest="eval_packs", type=str, default="")
+    eval_trace.add_argument(
+        "--eval-packs",
+        "--packs",
+        dest="eval_packs",
+        type=str,
+        default="",
+        help="Comma-separated selectors: pack_id or pack_id:evaluator_id (use fully-qualified IDs when in doubt)",
+    )
     eval_trace.add_argument("--policy", type=str, default="")
     eval_trace.add_argument("--judge-system-prompt", type=str, default="", help="System prompt for LLM evaluators")
     eval_trace.add_argument("--judge-system-prompt-file", type=str, default="", help="File containing system prompt for LLM evaluators")
@@ -218,7 +225,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     eval_dir = sub.add_parser("eval-dir", help="Run evaluators on all traces in a directory")
     eval_dir.add_argument("--dir", type=str, required=True)
-    eval_dir.add_argument("--eval-packs", "--packs", dest="eval_packs", type=str, default="")
+    eval_dir.add_argument(
+        "--eval-packs",
+        "--packs",
+        dest="eval_packs",
+        type=str,
+        default="",
+        help="Comma-separated selectors: pack_id or pack_id:evaluator_id (use fully-qualified IDs when in doubt)",
+    )
     eval_dir.add_argument("--policy", type=str, default="")
     eval_dir.add_argument("--judge-system-prompt", type=str, default="", help="System prompt for LLM evaluators")
     eval_dir.add_argument("--judge-system-prompt-file", type=str, default="", help="File containing system prompt for LLM evaluators")

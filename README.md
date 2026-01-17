@@ -235,11 +235,14 @@ Entry points use `relative_file.py:function` syntax and must live inside the pac
 ```bash
 python pack_cli.py list-packs
 python pack_cli.py list-components --type evaluators
-python pack_cli.py eval-trace --trace debug_screenshots/.../trace.json --eval-packs commerce_safety
-python pack_cli.py eval-dir --dir debug_screenshots --eval-packs commerce_safety --json
+python pack_cli.py eval-trace --trace debug_screenshots/.../trace.json --eval-packs commerce_safety:max_steps_budget
+python pack_cli.py eval-dir --dir debug_screenshots --eval-packs commerce_safety:max_steps_budget --json
 python pack_cli.py fuzz-generate --fuzz-pack basic_flow_fuzz --fuzzer basic_strategies --turns 2,3 --out fuzz_cases.json
 python pack_cli.py guidance-suggest --trace debug_screenshots/.../trace.json --advisor-pack advisor_guidance_patch --advisor suggest_patch --out guidance_patch.json
 ```
+
+Selectors accept either `pack_id` (all components in the pack) or `pack_id:component_id`.
+Use fully-qualified selectors when multiple packs share component IDs.
 
 ### Built-in packs
 
@@ -252,7 +255,7 @@ python pack_cli.py guidance-suggest --trace debug_screenshots/.../trace.json --a
 
 - Evaluate traces during a benchmark run:
   ```bash
-  python benchmark_computeruse.py --eval-packs commerce_safety
+  python benchmark_computeruse.py --eval-packs commerce_safety:max_steps_budget
   ```
 - Optional gate policy (for blocking on uncertain results):
   ```bash
@@ -260,7 +263,7 @@ python pack_cli.py guidance-suggest --trace debug_screenshots/.../trace.json --a
   ```
 - Apply guidance packs:
   ```bash
-  python benchmark_computeruse.py --guidance-packs guidance_basics
+  python benchmark_computeruse.py --guidance-packs guidance_basics:baseline_guidance
   ```
 - Use a pack fuzzer with flow fuzzing:
   ```bash
@@ -269,7 +272,7 @@ python pack_cli.py guidance-suggest --trace debug_screenshots/.../trace.json --a
 - Evaluate fuzz traces and apply guidance:
   ```bash
   python flow_fuzz.py --fuzz-pack basic_flow_fuzz --fuzzer basic_strategies --turns 3,4,5 \
-    --eval-packs commerce_safety --guidance-packs guidance_basics
+    --eval-packs commerce_safety:loop_detector --guidance-packs guidance_basics:baseline_guidance
   ```
 
 ## New: Trace Trees & Counterfactual Branching

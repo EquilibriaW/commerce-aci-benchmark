@@ -233,6 +233,7 @@ async def run_fuzz_trial(
     capability: str,
     system_prompt: str = SYSTEM_PROMPT,
     guidance_meta: Optional[dict[str, Any]] = None,
+    model: str = ComputerUseAgent.DEFAULT_MODEL,
 ) -> dict[str, Any]:
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY environment variable is required")
@@ -257,7 +258,13 @@ async def run_fuzz_trial(
             user_agent="CommerceACIBenchmark/Fuzz/1.0",
         )
         page = await context.new_page()
-        agent = ComputerUseAgent(page, api_key=ANTHROPIC_API_KEY, debug_dir=debug_dir, system_prompt=system_prompt)
+        agent = ComputerUseAgent(
+            page,
+            api_key=ANTHROPIC_API_KEY,
+            debug_dir=debug_dir,
+            system_prompt=system_prompt,
+            model=model,
+        )
 
         await agent.reset_session(api_url, discoverability=discoverability, capability=capability)
         await page.goto(target_url)
@@ -391,13 +398,29 @@ async def main_async() -> None:
     parser.add_argument("--discoverability", choices=["navbar", "hidden"], default="navbar")
     parser.add_argument("--capability", choices=["advantage", "parity"], default="advantage")
     parser.add_argument("--start", choices=["root", "agent"], default="root")
+    parser.add_argument(
+        "--model",
+        choices=sorted(ComputerUseAgent.SUPPORTED_MODELS.keys()),
+        default=ComputerUseAgent.DEFAULT_MODEL,
+        help="Model to use: sonnet (claude-sonnet-4-5) or haiku (claude-haiku-3-5). Default: sonnet",
+    )
     parser.add_argument("--runs-per-scenario", type=int, default=1)
     parser.add_argument("--turns", type=str, default="3,4,5", help="Comma-separated injection turns")
     parser.add_argument("--system-prompt-file", type=str, default=None, help="Optional system prompt override")
     parser.add_argument("--fuzz-pack", type=str, default="", help="Optional pack id for fuzz cases")
     parser.add_argument("--fuzzer", type=str, default="", help="Fuzzer id within the pack")
-    parser.add_argument("--eval-packs", type=str, default="", help="Comma-separated pack IDs to evaluate traces")
-    parser.add_argument("--guidance-packs", type=str, default="", help="Comma-separated guidance pack IDs")
+    parser.add_argument(
+        "--eval-packs",
+        type=str,
+        default="",
+        help="Comma-separated selectors: pack_id or pack_id:evaluator_id (use fully-qualified IDs when in doubt)",
+    )
+    parser.add_argument(
+        "--guidance-packs",
+        type=str,
+        default="",
+        help="Comma-separated selectors: pack_id or pack_id:guidance_id (use fully-qualified IDs when in doubt)",
+    )
     args = parser.parse_args()
 
     base_prompt = SYSTEM_PROMPT
@@ -473,6 +496,7 @@ async def main_async() -> None:
                     capability=args.capability,
                     system_prompt=system_prompt,
                     guidance_meta=guidance_meta,
+                    model=args.model,
                 )
             except Exception as e:
                 res = {
@@ -484,17 +508,17 @@ async def main_async() -> None:
                 }
             results.append(res)
 
-            eval_packs = [p.strip() for p in args.eval_packs.split(",") if p.strip()]
+            eval_selectors = [p.strip() for p in args.eval_packs.split(",") if p.strip()]
             trace_path_str = res.get("trace_path")
-            if eval_packs and trace_path_str:
+            if eval_selectors and trace_path_str:
                 try:
                     trace_path = Path(trace_path_str)
                     trace = json.loads(trace_path.read_text(encoding="utf-8"))
                     registry = registry or PackRegistry.discover()
-                    eval_results = run_evaluators_on_trace(trace, selected_packs=eval_packs, registry=registry)
+                    eval_results = run_evaluators_on_trace(trace, selected_evaluators=eval_selectors, registry=registry)
                     out_path = write_eval_results(trace_path, eval_results)
                     gate_status = "FAIL" if gate_should_fail(eval_results) else "PASS"
-                    console.print(f"    Eval packs: {', '.join(eval_packs)} -> {out_path} ({gate_status})")
+                    console.print(f"    Eval selectors: {', '.join(eval_selectors)} -> {out_path} ({gate_status})")
                 except Exception as e:
                     console.print(f"[yellow]Warning: evaluator run failed: {e}[/yellow]")
 

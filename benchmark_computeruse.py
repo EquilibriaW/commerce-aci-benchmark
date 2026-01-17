@@ -1308,10 +1308,10 @@ async def main(args: argparse.Namespace):
                     console.print(f"  {task['id']} | Run {run_num + 1} | {status} | Steps: {res['steps']}")
 
                     eval_packs_raw = getattr(args, "eval_packs", "")
-                    eval_packs = [p.strip() for p in str(eval_packs_raw).split(",") if p.strip()]
+                    eval_selectors = [p.strip() for p in str(eval_packs_raw).split(",") if p.strip()]
                     eval_output = getattr(args, "eval_output", "eval_results.json")
                     trace_path_str = res.get("trace_path")
-                    if eval_packs and trace_path_str:
+                    if eval_selectors and trace_path_str:
                         try:
                             from pack_api.loader import PackRegistry
                             from pack_api.runtime import (
@@ -1326,7 +1326,7 @@ async def main(args: argparse.Namespace):
                             registry = PackRegistry.discover()
                             eval_results = run_evaluators_on_trace(
                                 trace,
-                                selected_packs=eval_packs,
+                                selected_evaluators=eval_selectors,
                                 registry=registry,
                             )
                             out_path = write_eval_results(
@@ -1337,7 +1337,7 @@ async def main(args: argparse.Namespace):
                             )
                             gate_failed = gate_should_fail(eval_results, gate_policy)
                             gate_status = "FAIL" if gate_failed else "PASS"
-                            console.print(f"    Eval packs: {', '.join(eval_packs)} -> {out_path} ({gate_status})")
+                            console.print(f"    Eval selectors: {', '.join(eval_selectors)} -> {out_path} ({gate_status})")
 
                             if gate_failed and advisor_pack and advisor_id:
                                 try:
@@ -1643,14 +1643,22 @@ def parse_args() -> argparse.Namespace:
                         help="Number of runs per task (default: RUNS_PER_TASK constant)")
     parser.add_argument("--system-prompt-file", type=str, default=None,
                         help="Optional path to a system prompt override (applies to the agent policy)")
-    parser.add_argument("--guidance-packs", type=str, default="",
-                        help="Comma-separated guidance pack IDs to append to the system prompt")
+    parser.add_argument(
+        "--guidance-packs",
+        type=str,
+        default="",
+        help="Comma-separated selectors: pack_id or pack_id:guidance_id (use fully-qualified IDs when in doubt)",
+    )
     parser.add_argument("--instruction", type=str, default=None,
                         help="Custom instruction/goal for ad-hoc runs (overrides --tasks)")
     parser.add_argument("--model", type=str, choices=["sonnet", "haiku"], default="sonnet",
                         help="Model to use: sonnet (claude-sonnet-4-5) or haiku (claude-haiku-3-5). Default: sonnet")
-    parser.add_argument("--eval-packs", type=str, default="",
-                        help="Comma-separated pack IDs to evaluate traces after each run")
+    parser.add_argument(
+        "--eval-packs",
+        type=str,
+        default="",
+        help="Comma-separated selectors: pack_id or pack_id:evaluator_id (use fully-qualified IDs when in doubt)",
+    )
     parser.add_argument("--eval-output", type=str, default="eval_results.json",
                         help="Eval results filename to write next to trace.json")
     parser.add_argument("--gate-policy", type=str, default="",
