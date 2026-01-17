@@ -180,8 +180,8 @@ class TraceTree:
         trace_data = json.loads(trace_path.read_text(encoding="utf-8"))
 
         # Generate IDs
-        tree_id = str(uuid.uuid4())[:8]
-        trace_id = str(uuid.uuid4())[:8]
+        tree_id = str(uuid.uuid4())
+        trace_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
 
         # Create tree directory structure
@@ -202,6 +202,10 @@ class TraceTree:
             shutil.copy2(actions_log, root_dir / "actions.log")
 
         # Upgrade trace to v2 schema
+        meta = trace_data.get("meta", {})
+        original_trace_id = trace_data.get("trace_id")
+        if original_trace_id:
+            meta.setdefault("imported_from_trace_id", original_trace_id)
         trace_data["schema_version"] = cls.SCHEMA_VERSION
         trace_data["trace_version"] = "v2"
         trace_data["trace_id"] = trace_id
@@ -210,7 +214,6 @@ class TraceTree:
         trace_data["intervention"] = None
 
         # Update meta
-        meta = trace_data.get("meta", {})
         meta["is_branched"] = False
         meta["branch_depth"] = 0
         meta["created_at"] = meta.get("run_timestamp", now)
@@ -382,7 +385,7 @@ class TraceTree:
             raise ValueError(f"Parent trace not found: {parent_trace_id}")
 
         # Generate new trace ID
-        trace_id = str(uuid.uuid4())[:8]
+        trace_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
 
         # Create branch directory
@@ -454,42 +457,20 @@ class TraceTree:
         This combines steps from all ancestors and the current trace into
         a single sequence, useful for full replay.
         """
-        all_steps = []
+        all_steps: list[dict] = []
 
-        # Get ancestors (root first)
         ancestors = self.get_ancestors(trace_id)
-
-        for ancestor in ancestors:
+        for idx, ancestor in enumerate(ancestors):
             trace_data = self.load_trace(ancestor.trace_id)
             steps = trace_data.get("steps", [])
-
-            # For ancestors, we only include steps up to the branch point
-            # where the next trace branches off
-            next_ancestor_idx = ancestors.index(ancestor) + 1
-            if next_ancestor_idx < len(ancestors):
-                next_ancestor = ancestors[next_ancestor_idx]
-                # Include steps before the branch point
-                branch_step = next_ancestor.branch_point_step
+            if idx + 1 < len(ancestors):
+                branch_step = ancestors[idx + 1].branch_point_step
                 if branch_step:
                     steps = steps[:branch_step - 1]
-
             all_steps.extend(steps)
 
-        # Add steps from the target trace itself
-        # For the target trace, we need to check if it's the direct child
-        node = self.get_node(trace_id)
-        if node.parent_trace_id and not ancestors:
-            # Direct child of root - get root steps up to branch point
-            root_data = self.load_trace(self._index.root_trace_id)
-            root_steps = root_data.get("steps", [])
-            if node.branch_point_step:
-                root_steps = root_steps[:node.branch_point_step - 1]
-            all_steps.extend(root_steps)
-
-        # Now add the trace's own steps
         trace_data = self.load_trace(trace_id)
         all_steps.extend(trace_data.get("steps", []))
-
         return all_steps
 
     def get_steps_for_replay(self, trace_id: str, up_to_step: int) -> list[dict]:
