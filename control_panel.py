@@ -1168,7 +1168,7 @@ def main() -> None:
                         use_container_width=True,
                         hide_index=True,
                         on_select="rerun",
-                        selection_mode="single",
+                        selection_mode="single-row",
                     )
                     selection_state = getattr(selection, "selection", None)
                     if selection_state and selection_state.get("rows"):
